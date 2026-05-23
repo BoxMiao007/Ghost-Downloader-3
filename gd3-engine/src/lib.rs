@@ -35,7 +35,7 @@ fn probe_url_py(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
     rt.block_on(async {
-        let client = probe::build_client(&proxies, verify_ssl)
+        let client = probe::build_client(&proxies, verify_ssl, false)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         let header_map = probe::build_header_map(&headers)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;

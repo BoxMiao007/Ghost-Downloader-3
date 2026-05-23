@@ -15,6 +15,7 @@ pub struct Connection {
     pub id: u32,
     pub segment: Segment,
     pub bytes_downloaded: Arc<AtomicU64>,
+    pub force_http1: bool,
 }
 
 /// 分片状态常量
@@ -38,10 +39,11 @@ impl Connection {
             id,
             segment,
             bytes_downloaded: Arc::new(AtomicU64::new(0)),
+            force_http1: false,
         }
     }
 
-    /// 执行下载，带重试和指数退避
+    /// 执行下载，带重试、指数退避和 HTTP 版本降级
     pub async fn run(
         &mut self,
         url: &str,
@@ -57,7 +59,6 @@ impl Connection {
         let mut last_error: Option<EngineError> = None;
 
         for attempt in 0..MAX_RETRIES {
-            // 检查取消
             if cancel.is_cancelled() {
                 self.segment.status = STATUS_PENDING;
                 return Err(EngineError::Cancelled);
@@ -76,10 +77,14 @@ impl Connection {
                     return Err(EngineError::Cancelled);
                 }
                 Err(e) => {
+                    // 5xx 错误时降级到 HTTP/1.1
+                    if is_server_error(&e) && !self.force_http1 {
+                        self.force_http1 = true;
+                    }
+
                     last_error = Some(e);
                     self.segment.retries = attempt + 1;
 
-                    // 如果还有重试机会，等待退避时间
                     if attempt + 1 < MAX_RETRIES {
                         let backoff = BACKOFF_SECS
                             .get(attempt as usize)
@@ -99,7 +104,6 @@ impl Connection {
             }
         }
 
-        // 超过最大重试次数
         self.segment.status = STATUS_FAILED;
         Err(EngineError::MaxRetries {
             id: self.id,
@@ -121,7 +125,7 @@ impl Connection {
         cancel: &CancellationToken,
         global_received: &Arc<AtomicU64>,
     ) -> Result<(), EngineError> {
-        let client = build_client(proxies, verify_ssl)?;
+        let client = build_client(proxies, verify_ssl, self.force_http1)?;
         let header_map = build_header_map(headers)?;
 
         // 计算当前需要下载的范围
@@ -168,6 +172,16 @@ impl Connection {
 
         Ok(())
     }
+}
+
+/// 判断错误是否为 5xx 服务端错误（触发 HTTP 版本降级）
+fn is_server_error(err: &EngineError) -> bool {
+    if let EngineError::Http(e) = err {
+        if let Some(status) = e.status() {
+            return status.is_server_error();
+        }
+    }
+    false
 }
 
 #[cfg(test)]

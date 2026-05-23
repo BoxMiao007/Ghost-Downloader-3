@@ -171,10 +171,17 @@ fn filename_from_url(url: &str) -> String {
 pub fn build_client(
     proxies: &std::collections::HashMap<String, String>,
     verify_ssl: bool,
+    force_http1: bool,
 ) -> Result<Client, EngineError> {
     let mut builder = Client::builder()
+        .user_agent("Ghost-Downloader/3 (gd3-engine)")
         .danger_accept_invalid_certs(!verify_ssl)
+        .connect_timeout(std::time::Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::limited(10));
+
+    if force_http1 {
+        builder = builder.http1_only();
+    }
 
     // 配置代理
     for (_protocol, proxy_url) in proxies {
