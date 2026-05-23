@@ -2,6 +2,7 @@ import asyncio
 from loguru import logger
 
 from app.bases.interfaces import Worker
+from app.bases.models import TaskStatus
 from app.supports.config import cfg
 
 
@@ -40,14 +41,17 @@ class RustHttpWorker(Worker):
 
                 if progress.state == "completed":
                     self.stage.progress = 100.0
+                    self.stage.setStatus(TaskStatus.COMPLETED)
                     logger.info(f"Rust 引擎下载完成: {self.stage.outputFile}")
                     break
                 elif progress.state == "failed":
                     raise RuntimeError(progress.error or "Rust 引擎下载失败")
                 elif progress.state == "paused":
+                    self.stage.setStatus(TaskStatus.PAUSED)
                     break
 
                 await asyncio.sleep(0.5)
         except asyncio.CancelledError:
             handle.pause()
+            self.stage.setStatus(TaskStatus.PAUSED)
             raise

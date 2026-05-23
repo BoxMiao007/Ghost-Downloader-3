@@ -116,6 +116,37 @@ class PreBlockNumCard(ParseSettingCard):
         return {"preBlockNum": self.slider.value()}
 
 
+class EngineSelectCard(ParseSettingCard):
+    def initCustomWidget(self) -> None:
+        from qfluentwidgets import ComboBox
+
+        self.comboBox = ComboBox(self)
+        self._initWidget()
+        self._initLayout()
+        self._bind()
+
+    def _initWidget(self) -> None:
+        from app.supports.engine import isRustEngineAvailable
+
+        self.comboBox.addItems(["Python", "Rust"])
+        index = 1 if cfg.httpEngine.value == "rust" else 0
+        self.comboBox.setCurrentIndex(index)
+        if not isRustEngineAvailable():
+            self.comboBox.setItemData(1, 0, Qt.ItemDataRole.UserRole - 1)
+            self.comboBox.setCurrentIndex(0)
+
+    def _initLayout(self) -> None:
+        self.hBoxLayout.addWidget(self.comboBox)
+        self.hBoxLayout.addSpacing(16)
+
+    def _bind(self) -> None:
+        self.comboBox.currentIndexChanged.connect(lambda _: self.payloadChanged.emit())
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        return {"engine": self.comboBox.currentText().lower()}
+
+
 class _StandaloneWrapper(FramelessDialog):
     def __init__(self, dialog: "AddTaskDialog") -> None:
         super().__init__()
@@ -204,6 +235,12 @@ class AddTaskDialog(MessageBoxBase):
 
         self.settingGroup.addCard(self.selectFolderCard)
         self.settingGroup.addCard(self.preBlockNumCard)
+        self.engineSelectCard = EngineSelectCard(
+            FluentIcon.SPEED_HIGH,
+            self.tr("HTTP 下载引擎"),
+            self,
+        )
+        self.settingGroup.addCard(self.engineSelectCard)
         for card in featureService.dialogCards(self.settingGroup):
             self.settingGroup.addCard(card)
 

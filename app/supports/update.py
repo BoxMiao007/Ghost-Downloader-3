@@ -9,7 +9,7 @@ from PySide6.QtCore import QVersionNumber
 from app.supports.config import DEFAULT_HEADERS, VERSION, cfg, isLessThanWin10
 from app.supports.utils import getProxies
 
-RELEASE_API_URL = "https://api.github.com/repos/XiaoYouChR/Ghost-Downloader-3/releases/latest"
+RELEASE_API_URL = "https://api.github.com/repos/BoxMiao007/Ghost-Downloader-3/releases/latest"
 RELEASE_HEADERS = {
     "accept": "application/vnd.github+json",
     "user-agent": DEFAULT_HEADERS["user-agent"],
