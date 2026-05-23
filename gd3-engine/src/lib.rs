@@ -3,14 +3,17 @@ use std::collections::HashMap;
 
 mod config;
 mod connection;
+mod engine;
 mod error;
 pub mod probe;
 mod progress;
 pub mod resume;
+mod scheduler;
 pub mod speed_limit;
 mod writer;
 
 use config::DownloadConfig;
+use engine::DownloadHandle;
 use probe::ProbeResult;
 use progress::DownloadProgress;
 
@@ -21,8 +24,8 @@ fn version() -> &'static str {
 
 /// 探测 URL，获取文件信息和服务器能力
 #[pyfunction]
-#[pyo3(signature = (url, headers=HashMap::new(), proxies=HashMap::new(), verify_ssl=false))]
-fn probe_url(
+#[pyo3(name = "probe", signature = (url, headers=HashMap::new(), proxies=HashMap::new(), verify_ssl=false))]
+fn probe_url_py(
     url: String,
     headers: HashMap<String, String>,
     proxies: HashMap<String, String>,
@@ -42,12 +45,20 @@ fn probe_url(
     })
 }
 
+/// 启动下载任务，返回 DownloadHandle
+#[pyfunction]
+fn start_download(config: DownloadConfig) -> PyResult<DownloadHandle> {
+    engine::start_download_inner(config)
+}
+
 #[pymodule]
 fn gd3_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
-    m.add_function(wrap_pyfunction!(probe_url, m)?)?;
+    m.add_function(wrap_pyfunction!(probe_url_py, m)?)?;
+    m.add_function(wrap_pyfunction!(start_download, m)?)?;
     m.add_class::<DownloadProgress>()?;
     m.add_class::<DownloadConfig>()?;
     m.add_class::<ProbeResult>()?;
+    m.add_class::<DownloadHandle>()?;
     Ok(())
 }

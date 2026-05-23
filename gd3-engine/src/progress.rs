@@ -47,6 +47,10 @@ impl DownloadProgress {
     pub fn inner(&self) -> &Arc<ProgressInner> {
         &self.inner
     }
+
+    pub fn get_error(&self) -> Option<String> {
+        self.error.lock().unwrap().clone()
+    }
 }
 
 #[pymethods]
