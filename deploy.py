@@ -5,6 +5,9 @@ from pathlib import Path
 
 from app.supports.config import VERSION, YEAR, AUTHOR
 
+# Windows PE file version requires numeric-only format (e.g. "3.9.1" not "3.9-1")
+PE_VERSION = VERSION.replace("-", ".")
+
 FEATURES_ROOT = Path("features")
 FEATURE_PACK_BLACKLIST = {"jack_yao"}
 COMMON_INCLUDE_PACKAGES = [
@@ -56,8 +59,8 @@ def build_args() -> list[str]:
             '--windows-icon-from-ico=app/assets/logo.ico',
             '--company-name=XiaoYouChR',
             '--product-name="Ghost Downloader"',
-            f'--file-version={VERSION}',
-            f'--product-version={VERSION}',
+            f'--file-version={PE_VERSION}',
+            f'--product-version={PE_VERSION}',
             '--file-description="Ghost Downloader"',
             f'--copyright="Copyright(C) {YEAR} {AUTHOR}"',
             '--output-dir=dist',
@@ -76,7 +79,7 @@ def build_args() -> list[str]:
             "--macos-create-app-bundle",
             "--assume-yes-for-download",
             "--macos-app-mode=gui",
-            f"--macos-app-version={VERSION}",
+            f"--macos-app-version={PE_VERSION}",
             "--macos-app-icon=app/assets/logo.icns",
             f'--copyright="Copyright(C) {YEAR} {AUTHOR}"',
             '--output-dir=dist',
