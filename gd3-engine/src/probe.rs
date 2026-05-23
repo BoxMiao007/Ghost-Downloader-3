@@ -184,11 +184,22 @@ pub fn build_client(
     }
 
     // 配置代理
-    for (_protocol, proxy_url) in proxies {
-        let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| {
-            EngineError::Http(e)
-        })?;
-        builder = builder.proxy(proxy);
+    for (protocol, proxy_url) in proxies {
+        match protocol.as_str() {
+            "http" => {
+                let proxy = reqwest::Proxy::http(proxy_url).map_err(EngineError::Http)?;
+                builder = builder.proxy(proxy);
+            }
+            "https" => {
+                let proxy = reqwest::Proxy::https(proxy_url).map_err(EngineError::Http)?;
+                builder = builder.proxy(proxy);
+            }
+            "all" => {
+                let proxy = reqwest::Proxy::all(proxy_url).map_err(EngineError::Http)?;
+                builder = builder.proxy(proxy);
+            }
+            _ => {} // 跳过 "no" 等非代理键
+        }
     }
 
     let client = builder.build()?;

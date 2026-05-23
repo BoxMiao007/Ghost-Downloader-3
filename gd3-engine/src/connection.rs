@@ -128,9 +128,7 @@ impl Connection {
         let client = build_client(proxies, verify_ssl, self.force_http1)?;
         let header_map = build_header_map(headers)?;
 
-        // 计算当前需要下载的范围
-        let current_start = self.segment.start + self.segment.downloaded;
-        let range_header = format!("bytes={}-{}", current_start, self.segment.end);
+        let range_header = format!("bytes={}-{}", self.segment.downloaded, self.segment.end);
 
         let resp = client
             .get(url)
@@ -144,7 +142,7 @@ impl Connection {
 
         // 流式读取响应体
         let mut stream = resp.bytes_stream();
-        let mut write_offset = current_start;
+        let mut write_offset = self.segment.downloaded;
 
         while let Some(chunk_result) = stream.next().await {
             // 检查取消
