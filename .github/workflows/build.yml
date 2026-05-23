@@ -50,11 +50,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install Rust toolchain
+        if: matrix.architecture == 'x86_64'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Build Rust engine
+        if: matrix.architecture == 'x86_64'
         run: |
           pip install maturin
           cd gd3-engine
@@ -63,7 +65,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --timeout=300 -r requirements.txt
-          pip install gd3-engine/target/wheels/*.whl
+          if (Test-Path "gd3-engine/target/wheels/*.whl") { pip install (Get-Item gd3-engine/target/wheels/*.whl) }
 
       - name: Build with Nuitka
         run: |

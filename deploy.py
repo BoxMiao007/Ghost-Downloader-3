@@ -12,8 +12,14 @@ COMMON_INCLUDE_PACKAGES = [
     "qrcode",
     "libtorrent",
     "aioftp",
-    "gd3_engine",
 ]
+
+# 仅当 gd3_engine 已安装时才包含
+try:
+    import gd3_engine
+    COMMON_INCLUDE_PACKAGES.append("gd3_engine")
+except ImportError:
+    pass
 PLATFORM_INCLUDE_PACKAGES = {
     "win32": [
         "winrt",
