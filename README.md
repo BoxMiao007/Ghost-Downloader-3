@@ -48,7 +48,20 @@
 | Resume format | `.ghd` (raw binary) | `.ghdx` (CRC32 verified, backward-compatible) |
 | Speed limiting | Python async sleep loop | **Token bucket** (Rust, sub-ms precision) |
 
-The Rust engine is an **optional drop-in replacement** — install `gd3-engine` wheel and select "Rust" in Settings. Falls back to the Python engine gracefully if unavailable.
+The Rust engine is an **optional drop-in replacement** — select "Rust" in Settings. Falls back to the Python engine gracefully if unavailable.
+
+### Rust Engine Availability
+
+| Platform | Architecture | Rust Engine | Note |
+|----------|:------------:|:-----------:|------|
+| Windows | x86_64 | ✅ Bundled | — |
+| Windows | ARM64 | ⚠️ Self-build | No native CI runner available |
+| macOS | ARM64 | ✅ Bundled | — |
+| macOS | x86_64 | ✅ Bundled | — |
+| Linux | x86_64 | ✅ Bundled | — |
+| Linux | ARM64 | ✅ Bundled | — |
+
+For Windows ARM64 or manual installation:
 
 ```bash
 # Build and install the Rust engine locally

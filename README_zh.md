@@ -49,7 +49,20 @@
 | 续传格式 | `.ghd`（原始二进制） | `.ghdx`（CRC32 校验，向后兼容） |
 | 限速 | Python async sleep 循环 | **令牌桶**（Rust 实现，亚毫秒精度） |
 
-Rust 引擎是**可选的即插即用替代**——安装 `gd3-engine` wheel 后在设置中选择「Rust」即可。未安装时自动回退到 Python 引擎。
+Rust 引擎是**可选的即插即用替代**——在设置中选择「Rust」即可启用。未安装时自动回退到 Python 引擎。
+
+### Rust 引擎可用性
+
+| 平台 | 架构 | Rust 引擎 | 备注 |
+|------|:----:|:---------:|------|
+| Windows | x86_64 | ✅ 内置 | — |
+| Windows | ARM64 | ⚠️ 需自行构建 | 无原生 CI runner |
+| macOS | ARM64 | ✅ 内置 | — |
+| macOS | x86_64 | ✅ 内置 | — |
+| Linux | x86_64 | ✅ 内置 | — |
+| Linux | ARM64 | ✅ 内置 | — |
+
+Windows ARM64 用户或需要手动安装时：
 
 ```bash
 # 本地构建并安装 Rust 引擎
