@@ -22,3 +22,9 @@ dependencies = [
 dev = [
     "types-libtorrent>=2.0.11.20250816",
 ]
+
+[project.optional-dependencies]
+rust = ["gd3-engine"]
+
+[tool.uv.sources]
+gd3-engine = { path = "gd3-engine", editable = true }

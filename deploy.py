@@ -11,7 +11,8 @@ COMMON_INCLUDE_PACKAGES = [
     "urllib3",
     "qrcode",
     "libtorrent",
-    "aioftp"
+    "aioftp",
+    "gd3_engine",
 ]
 PLATFORM_INCLUDE_PACKAGES = {
     "win32": [
