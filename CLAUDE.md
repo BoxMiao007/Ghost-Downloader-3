@@ -46,6 +46,73 @@ cd gd3-engine && cargo test
 uv run python -c "from app.supports.engine import isRustEngineAvailable; print(isRustEngineAvailable())"
 ```
 
+### 版本号规则
+
+- 本 Fork 版本号格式：`{上游版本}-{迭代号}`，例如 `v3.8.4-1`、`v3.8.4-2`
+- 前缀版本号（如 `3.8.4`）仅在同步上游时更新，跟随上游版本
+- 后缀迭代号（如 `-1`、`-2`）用于本 Fork 自身的功能迭代
+- `app/supports/config.py` 中的 `VERSION` 保持与 tag 一致（如 `"3.8.4-1"`）
+
+### Release 发布说明排版规范
+
+发布说明采用**中文在上、英文在下**的双语结构，用双分隔线 `---\n---` 隔开：
+
+```markdown
+## 🚀 新特性
+
+- **功能名称** — 简要描述
+
+## 🐛 修复
+
+- **问题描述** — 修复内容
+
+## 📦 打包改进
+
+- 改进内容
+
+## 🔧 其他
+
+- 其他变更
+
+---
+
+### Rust 引擎可用性
+
+| 平台 | 架构 | Rust 引擎 |
+|------|:----:|:---------:|
+| Windows | x86_64 | ✅ 内置 |
+| Windows | ARM64 | ⚠️ 需自行构建 |
+| macOS | ARM64 | ✅ 内置 |
+| macOS | x86_64 | ✅ 内置 |
+| Linux | x86_64 | ✅ 内置 |
+| Linux | ARM64 | ✅ 内置 |
+
+---
+---
+
+## 🚀 What's New
+
+- **Feature name** — Brief description
+
+## 🐛 Fixes
+
+- **Issue description** — Fix details
+
+## 📦 Packaging
+
+- Improvement details
+
+## 🔧 Other
+
+- Other changes
+
+---
+
+### Rust Engine Availability
+
+（同上表英文版）
+```
+
 ## Rust HTTP 引擎 (`gd3-engine/`)
 
 可选的高性能 HTTP 下载引擎，通过 PyO3 暴露为 Python 扩展模块 `gd3_engine`。
