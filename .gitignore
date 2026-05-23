@@ -36,3 +36,41 @@ browser_extension/firefox/
 
 # 忽略 uv 锁文件
 uv.lock
+
+# 忽略 Rust 构建产物
+gd3-engine/target/
+*.so
+*.pyd
+*.dll
+
+# 忽略 Claude Code
+.claude/
+AGENTS.md
+docs/superpowers/
+
+# 忽略 Python 打包产物
+*.egg-info/
+.eggs/
+
+# 忽略测试与代码质量缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 忽略环境变量文件
+.env
+.env.*
+
+# 忽略 OS 系统文件
+Thumbs.db
+Desktop.ini
+
+# 忽略编辑器临时文件
+*.swp
+*.swo
+*~
+
+# 忽略 Nuitka 中间产物
+*.build/

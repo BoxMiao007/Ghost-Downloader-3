@@ -35,6 +35,27 @@
 
 </div>
 
+<!-- FORK NOTICE -->
+## Fork 差异
+
+> 本仓库是 [XiaoYouChR/Ghost-Downloader-3](https://github.com/XiaoYouChR/Ghost-Downloader-3) 的 Fork，包含以下增强：
+
+| 特性 | 上游 (Python) | 本 Fork |
+|------|:-:|:-:|
+| HTTP 下载引擎 | Python (`niquests` + asyncio) | **Rust** (`gd3-engine`，可选) |
+| 调度算法 | 固定分块数 + 自动加速 | **自适应混合策略**（探测 → 估算 → 自动扩缩） |
+| 进度报告 | Python 层轮询 | **零 GIL 争用**，原子共享内存 |
+| 磁盘 I/O | `os.pwrite` | **平台优化**（`write_all_at` / overlapped I/O） |
+| 续传格式 | `.ghd`（原始二进制） | `.ghdx`（CRC32 校验，向后兼容） |
+| 限速 | Python async sleep 循环 | **令牌桶**（Rust 实现，亚毫秒精度） |
+
+Rust 引擎是**可选的即插即用替代**——安装 `gd3-engine` wheel 后在设置中选择「Rust」即可。未安装时自动回退到 Python 引擎。
+
+```bash
+# 本地构建并安装 Rust 引擎
+cd gd3-engine && maturin develop --release
+```
+
 <!-- ABOUT THE PROJECT -->
 ## 关于本项目
 

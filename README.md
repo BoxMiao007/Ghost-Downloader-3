@@ -34,6 +34,27 @@
 
 </div>
 
+<!-- FORK NOTICE -->
+## Fork Differences
+
+> This is a fork of [XiaoYouChR/Ghost-Downloader-3](https://github.com/XiaoYouChR/Ghost-Downloader-3) with the following enhancements:
+
+| Feature | Upstream (Python) | This Fork |
+|---------|:-:|:-:|
+| HTTP download engine | Python (`niquests` + asyncio) | **Rust** (`gd3-engine`, optional) |
+| Scheduling algorithm | Fixed block count + auto-acceleration | **Adaptive hybrid** (probe → estimate → auto-scale) |
+| Progress reporting | Python-level polling | **Zero-GIL** atomic shared memory |
+| Disk I/O | `os.pwrite` | **Platform-optimized** (`write_all_at` / overlapped I/O) |
+| Resume format | `.ghd` (raw binary) | `.ghdx` (CRC32 verified, backward-compatible) |
+| Speed limiting | Python async sleep loop | **Token bucket** (Rust, sub-ms precision) |
+
+The Rust engine is an **optional drop-in replacement** — install `gd3-engine` wheel and select "Rust" in Settings. Falls back to the Python engine gracefully if unavailable.
+
+```bash
+# Build and install the Rust engine locally
+cd gd3-engine && maturin develop --release
+```
+
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
