@@ -1,0 +1,24 @@
+[package]
+name = "gd3-engine"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0"
+
+[lib]
+name = "gd3_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module"] }
+pyo3-async-runtimes = { version = "0.25", features = ["tokio-runtime"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "socks", "http2"] }
+futures = "0.3"
+bytes = "1"
+crc32fast = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio-test = "0.4"
+wiremock = "0.6"
+tempfile = "3"
