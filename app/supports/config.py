@@ -202,6 +202,10 @@ class Config(QConfig):
     maxReassignSize = RangeConfigItem(
         "GeneralDownload", "MaxReassignSize", 3, RangeValidator(1, 100)
     )
+    httpEngine = OptionsConfigItem(
+        "GeneralDownload", "HttpEngine", "python",
+        OptionsValidator(["python", "rust"]),
+    )
 
     # 浏览器插件设置
     enableBrowserExtension = ConfigItem(

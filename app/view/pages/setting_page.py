@@ -13,6 +13,7 @@ from qfluentwidgets import RangeSettingCard, FluentIcon, SwitchSettingCard, Push
 from app.services.browser_service import BrowserService
 from app.supports.config import cfg, EDGE_ADDONS_URL, FIREFOX_ADDONS_URL, AUTHOR_URL, AUTHOR, YEAR, \
     VERSION, FEEDBACK_URL
+from app.supports.engine import isRustEngineAvailable
 from app.supports.utils import openAppLogFolder
 from app.view.components.setting_card_group import CollapsibleSettingCardGroup
 from app.view.components.setting_cards import SpinBoxSettingCard, SelectFolderSettingCard, ProxySettingCard
@@ -142,6 +143,19 @@ class SettingPage(ScrollArea):
             cfg.proxyServer, self.generalDownloadGroup
         )
         self.generalDownloadGroup.addSettingCard(self.proxyServerCard)
+        self.httpEngineCard = ComboBoxSettingCard(
+            cfg.httpEngine,
+            FluentIcon.SPEED_HIGH,
+            self.tr("HTTP 下载引擎"),
+            self.tr("选择 HTTP 下载使用的引擎") + (
+                "" if isRustEngineAvailable() else " (" + self.tr("Rust 引擎不可用") + ")"
+            ),
+            texts=["Python", "Rust"],
+            parent=self.generalDownloadGroup,
+        )
+        if not isRustEngineAvailable():
+            self.httpEngineCard.comboBox.setEnabled(False)
+        self.generalDownloadGroup.addSettingCard(self.httpEngineCard)
         # Browser
         self.browserExtensionCard = SwitchSettingCard(
             FluentIcon.CONNECT,
