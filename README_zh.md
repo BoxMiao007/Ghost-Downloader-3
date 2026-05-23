@@ -49,7 +49,7 @@
 | 续传格式 | `.ghd`（原始二进制） | `.ghdx`（CRC32 校验，向后兼容） |
 | 限速 | Python async sleep 循环 | **令牌桶**（Rust 实现，亚毫秒精度） |
 
-Rust 引擎是**可选的即插即用替代**——在设置中选择「Rust」即可启用。未安装时自动回退到 Python 引擎。
+Rust 引擎是**可选的即插即用替代**——在设置中选择「Rust」作为全局默认，或在添加任务对话框中逐任务选择。未安装时自动回退到 Python 引擎。
 
 ### Rust 引擎可用性
 
@@ -181,7 +181,7 @@ cd gd3-engine && maturin develop --release
 
 根据 GPL v3.0 许可证分发。打开 `LICENSE` 查看更多内容。
 
-Copyright © 2025 XiaoYouChR.
+Copyright © 2026 XiaoYouChR.
 
 <!-- CONTACT -->
 ## 联系

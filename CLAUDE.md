@@ -30,8 +30,10 @@ Ghost-Downloader-3 is a cross-platform multithreaded download manager built with
 | `features/http_pack/task.py` | 新增 `engine` 字段，`__post_init__` 动态选择 workerType |
 | `features/http_pack/pack.py` | `parse()` 中注入 `engine` 到 metadata |
 | `app/supports/config.py` | 新增 `httpEngine` OptionsConfigItem |
+| `app/supports/update.py` | `RELEASE_API_URL` 指向 Fork 仓库 |
 | `app/view/pages/setting_page.py` | 新增引擎选择 ComboBoxSettingCard |
-| `deploy.py` | `COMMON_INCLUDE_PACKAGES` 添加 `"gd3_engine"` |
+| `app/view/components/add_task_dialog.py` | 新增 `EngineSelectCard` 每任务引擎选择 |
+| `deploy.py` | `COMMON_INCLUDE_PACKAGES` 添加 `"gd3_engine"`；`PE_VERSION` 处理版本号格式 |
 | `pyproject.toml` | 新增 `[project.optional-dependencies] rust` 和 `[tool.uv.sources]` |
 | `.gitignore` | 新增 Rust 构建产物、Claude Code 等忽略规则 |
 
@@ -48,10 +50,11 @@ uv run python -c "from app.supports.engine import isRustEngineAvailable; print(i
 
 ### 版本号规则
 
-- 本 Fork 版本号格式：`{上游版本}-{迭代号}`，例如 `v3.8.4-1`、`v3.8.4-2`
-- 前缀版本号（如 `3.8.4`）仅在同步上游时更新，跟随上游版本
+- 本 Fork 版本号格式：`{上游版本}-{迭代号}`，例如 `v3.9-1`、`v3.9-2`
+- 前缀版本号（如 `3.9`）仅在同步上游时更新，跟随上游版本
 - 后缀迭代号（如 `-1`、`-2`）用于本 Fork 自身的功能迭代
-- `app/supports/config.py` 中的 `VERSION` 保持与 tag 一致（如 `"3.8.4-1"`）
+- `app/supports/config.py` 中的 `VERSION` 保持与 tag 一致（如 `"3.9-1"`）
+- `deploy.py` 中 `PE_VERSION = VERSION.replace("-", ".")` 用于 Nuitka/macOS 版本号字段（不接受连字符）
 
 ### Release 发布说明排版规范
 
@@ -201,6 +204,7 @@ uv run python deploy.py
 
 - **CoreService** (`core_service.py`): 运行在独立 QThread 中的 asyncio 事件循环。管理任务调度（等待队列 + 并发槽位限制）、异步协程执行、桌面通知。通过 `coreService` 单例访问。
 - **FeatureService** (`feature_service.py`): 发现、加载、管理 FeaturePack 插件。通过 URL 匹配分发到对应插件。通过 `featureService` 单例访问。
+- **CategoryService** (`category_service.py`): 下载分类规则管理，根据文件扩展名/URL 模式自动分配下载目录。通过 `categoryService` 单例访问。
 - **BrowserService** (`browser_service.py`): WebSocket 服务器，与浏览器扩展通信（配对认证、任务创建、状态同步）。
 
 ### 插件系统 (`features/`)

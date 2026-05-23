@@ -48,7 +48,7 @@
 | Resume format | `.ghd` (raw binary) | `.ghdx` (CRC32 verified, backward-compatible) |
 | Speed limiting | Python async sleep loop | **Token bucket** (Rust, sub-ms precision) |
 
-The Rust engine is an **optional drop-in replacement** — select "Rust" in Settings. Falls back to the Python engine gracefully if unavailable.
+The Rust engine is an **optional drop-in replacement** — select "Rust" in Settings for global default, or choose per-task in the add-task dialog. Falls back to the Python engine gracefully if unavailable.
 
 ### Rust Engine Availability
 
@@ -180,7 +180,7 @@ Thanks to all contributors who have participated in this project!
 
 Distributed under the GPL v3.0 License. Open `LICENSE` for more details.
 
-Copyright © 2025 XiaoYouChR.
+Copyright © 2026 XiaoYouChR.
 
 <!-- CONTACT -->
 ## Contact
