@@ -53,7 +53,7 @@ jobs:
 
       - name: Build wheel
         working-directory: gd3-engine
-        run: maturin build --release --target ${{ matrix.target }} -i python
+        run: maturin build --release --target ${{ matrix.target }} -i 3.11
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4

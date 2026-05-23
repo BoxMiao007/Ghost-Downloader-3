@@ -58,7 +58,7 @@ jobs:
         run: |
           pip install maturin
           cd gd3-engine
-          maturin build --release --target ${{ matrix.rust_target }} -i python
+          maturin build --release --target ${{ matrix.rust_target }} -i 3.11
 
       - name: Install dependencies
         run: |
