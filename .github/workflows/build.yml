@@ -138,9 +138,11 @@ jobs:
         include:
           - architecture: arm64
             runner: macos-14
+            rust_target: aarch64-apple-darwin
             openssl_workaround: 'false'
           - architecture: x86_64
             runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
             openssl_workaround: 'true'
     runs-on: ${{ matrix.runner }}
     steps:
@@ -160,9 +162,21 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Build Rust engine
+        run: |
+          pip install maturin
+          cd gd3-engine
+          maturin build --release --target ${{ matrix.rust_target }} -i 3.11
+
       - name: Install dependencies
         run: |
           pip install --timeout=300 -r requirements.txt
+          pip install gd3-engine/target/wheels/*.whl || true
 
       - name: Build with Nuitka
         run: |
@@ -234,10 +248,12 @@ jobs:
         include:
           - architecture: x86_64
             runner: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
             deb_arch: amd64
             appimage_arch: x86_64
           - architecture: arm64
             runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
             deb_arch: arm64
             appimage_arch: aarch64
     runs-on: ${{ matrix.runner }}
@@ -252,11 +268,23 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Build Rust engine
+        run: |
+          pip install maturin
+          cd gd3-engine
+          maturin build --release --target ${{ matrix.rust_target }} -i 3.11
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y desktop-file-utils libegl1-mesa-dev
           pip install --timeout=300 -r requirements.txt
+          pip install gd3-engine/target/wheels/*.whl || true
 
       - name: Build with Nuitka
         run: |
