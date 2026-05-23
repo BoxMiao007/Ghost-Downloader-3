@@ -62,3 +62,51 @@ impl SpeedLimiter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::Instant;
+
+    #[tokio::test]
+    async fn test_acquire_no_limit() {
+        // limit=0 意味着无限制，acquire 应立即返回
+        let limiter = SpeedLimiter::new(0);
+        let start = Instant::now();
+        limiter.acquire(1_000_000).await;
+        assert!(start.elapsed() < Duration::from_millis(10));
+    }
+
+    #[tokio::test]
+    async fn test_acquire_within_budget() {
+        // 请求量小于限制，不应阻塞
+        let limiter = SpeedLimiter::new(1_000_000); // 1MB/s
+        let start = Instant::now();
+        limiter.acquire(100).await; // 100 bytes，远低于预算
+        assert!(start.elapsed() < Duration::from_millis(10));
+    }
+
+    #[tokio::test]
+    async fn test_acquire_exceeds_budget_blocks() {
+        // 耗尽预算后，下一次 acquire 应阻塞
+        let limiter = SpeedLimiter::new(1000); // 1000 bytes/s
+        limiter.acquire(1000).await; // 耗尽全部预算
+        let start = Instant::now();
+        limiter.acquire(500).await; // 应阻塞约 500ms
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed >= Duration::from_millis(50),
+            "Should have blocked, elapsed: {:?}",
+            elapsed
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_limit_dynamic() {
+        let limiter = SpeedLimiter::new(100);
+        limiter.set_limit(0); // 禁用限制
+        let start = Instant::now();
+        limiter.acquire(999_999).await; // limit=0 应立即通过
+        assert!(start.elapsed() < Duration::from_millis(10));
+    }
+}

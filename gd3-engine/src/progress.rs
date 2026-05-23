@@ -101,3 +101,71 @@ impl DownloadProgress {
         self.error.lock().unwrap().clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_progress_initial_state() {
+        let inner = Arc::new(ProgressInner::new(1000));
+        let progress = DownloadProgress::new(inner);
+        assert_eq!(progress.received_bytes(), 0);
+        assert_eq!(progress.total_bytes(), 1000);
+        assert_eq!(progress.speed(), 0);
+        assert_eq!(progress.connections(), 0);
+        assert_eq!(progress.percent(), 0.0);
+        assert_eq!(progress.state(), "downloading");
+        assert_eq!(progress.error(), None);
+    }
+
+    #[test]
+    fn test_progress_percent_calculation() {
+        let inner = Arc::new(ProgressInner::new(200));
+        inner.received_bytes.store(100, Ordering::Relaxed);
+        let progress = DownloadProgress::new(inner);
+        assert!((progress.percent() - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_progress_percent_zero_total() {
+        // total_bytes <= 0 应返回 0%（避免除零）
+        let inner = Arc::new(ProgressInner::new(0));
+        inner.received_bytes.store(500, Ordering::Relaxed);
+        let progress = DownloadProgress::new(inner);
+        assert_eq!(progress.percent(), 0.0);
+    }
+
+    #[test]
+    fn test_progress_percent_negative_total() {
+        let inner = Arc::new(ProgressInner::new(-1));
+        let progress = DownloadProgress::new(inner);
+        assert_eq!(progress.percent(), 0.0);
+    }
+
+    #[test]
+    fn test_progress_state_mapping() {
+        let inner = Arc::new(ProgressInner::new(100));
+        let progress = DownloadProgress::new(inner.clone());
+
+        inner.state.store(0, Ordering::Relaxed);
+        assert_eq!(progress.state(), "downloading");
+        inner.state.store(1, Ordering::Relaxed);
+        assert_eq!(progress.state(), "paused");
+        inner.state.store(2, Ordering::Relaxed);
+        assert_eq!(progress.state(), "completed");
+        inner.state.store(3, Ordering::Relaxed);
+        assert_eq!(progress.state(), "failed");
+        inner.state.store(99, Ordering::Relaxed);
+        assert_eq!(progress.state(), "unknown");
+    }
+
+    #[test]
+    fn test_set_error() {
+        let inner = Arc::new(ProgressInner::new(100));
+        let progress = DownloadProgress::new(inner);
+        assert_eq!(progress.error(), None);
+        progress.set_error("connection timeout".to_string());
+        assert_eq!(progress.error(), Some("connection timeout".to_string()));
+    }
+}
