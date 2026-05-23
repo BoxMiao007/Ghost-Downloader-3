@@ -175,6 +175,7 @@ class HttpPack(FeaturePack):
         proxies: dict = payload.get("proxies", getProxies())
         blockNum: int = payload.get("preBlockNum", cfg.preBlockNum.value)
         path: Path = payload.get("path", Path(cfg.downloadFolder.value))
+        engineChoice: str = payload.get("engine") or cfg.httpEngine.value
 
         fileName = str(payload.get("filename") or "").strip()
         fileSize = payload.get("fileSize") or SpecialFileSize.UNKNOWN
@@ -197,6 +198,7 @@ class HttpPack(FeaturePack):
                 "proxies": proxies,
                 "blockNum": blockNum,
                 "supportsRange": supportsRange,
+                "engine": engineChoice,
             },
         )
         stage = HttpTaskStage(
@@ -208,6 +210,7 @@ class HttpPack(FeaturePack):
             outputFile=str(path / fileName),
             blockNum=blockNum,
             supportsRange=supportsRange,
+            engine=engineChoice,
         )
         task.addStage(stage)
         return task
