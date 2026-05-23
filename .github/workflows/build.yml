@@ -101,18 +101,19 @@ jobs:
           name: Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup
           path: dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
 
-      - name: Create zip file
+      - name: Rename dist folder
+        shell: pwsh
+        run: |
+          $folderName = "Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}"
+          Rename-Item "dist/Ghost-Downloader-3.dist" $folderName
+          mv "dist/$folderName" $folderName
+
+      - name: Create 7z archive
         if: ${{ github.event_name == 'release' }}
         shell: pwsh
         run: |
-          $distPath = "dist/Ghost-Downloader-3.dist"
-          $zipFile = "Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip"
-
-          # Create a zip file containing the contents of Ghost-Downloader.dist, without the folder itself
-          Write-Output "Zipping contents of $distPath..."
-          7z a -tzip -mx=9 -m0=LZMA Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip dist/Ghost-Downloader-3.dist/*
-          Write-Output "Zip created at $zipFile"
-          
+          $folderName = "Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}"
+          7z a -t7z -mx=9 "$folderName.7z" $folderName
           mv dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-Setup.exe dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
 
       - name: Upload artifacts
@@ -120,15 +121,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}
-          path: |
-            dist/Ghost-Downloader-3.dist
+          path: Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/') }}
         with:
           files: |
-            Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.zip
+            Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}.7z
             dist/Ghost-Downloader-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}-Setup.exe
 
   build-macos:
@@ -378,17 +378,16 @@ jobs:
           dpkg-deb --info "$DEB_FILE"
           file "$APPIMAGE_FILE"
 
-      - name: Tar the contents of Ghost-Downloader
-        if: ${{ github.event_name == 'release' }}
-        shell: pwsh
+      - name: Rename dist folder
         run: |
-          $distPath = "dist/Ghost-Downloader-3.dist"
-          $tarFile = "Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.tar.xz"
-          
-          # Create a tar.xz archive containing the contents of Ghost-Downloader.dist, without the folder itself
-          Write-Output "Creating tar.xz archive of $distPath..."
-          tar -cJf $tarFile -C $distPath .
-          Write-Output "Archive created at $tarFile"
+          FOLDER_NAME="Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}"
+          mv "dist/Ghost-Downloader-3.dist" "$FOLDER_NAME"
+
+      - name: Create 7z archive
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          FOLDER_NAME="Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}"
+          7z a -t7z -mx=9 "$FOLDER_NAME.7z" "$FOLDER_NAME"
 
       - name: Upload artifacts
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -396,7 +395,7 @@ jobs:
         with:
           name: Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}
           path: |
-            dist/Ghost-Downloader-3.dist
+            Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}
             dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.deb
             dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.AppImage
 
@@ -405,6 +404,6 @@ jobs:
         if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/') }}
         with:
           files: |
-            Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.tar.xz
+            Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.7z
             dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.deb
             dist/Ghost-Downloader-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}.AppImage
