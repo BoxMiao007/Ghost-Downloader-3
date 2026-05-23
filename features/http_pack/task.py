@@ -29,12 +29,21 @@ class HttpTaskStage(TaskStage):
     blockNum: int
     supportsRange: bool = True
     accelerated: bool = False
+    engine: str = "python"
 
     def updateOutputFile(self, taskPath: Path, taskTitle: str):
         self.outputFile = str(taskPath / taskTitle)
 
     def __post_init__(self):
         self.canPause = self.supportsRange
+        # 动态选择 Worker 类型
+        if self.engine == "rust":
+            from app.supports.engine import isRustEngineAvailable
+            if isRustEngineAvailable():
+                from features.http_pack.rust_worker import RustHttpWorker
+                self.workerType = RustHttpWorker
+                return
+        # 默认使用 Python Worker（由文件末尾的类属性赋值提供）
 
 
 @dataclass
