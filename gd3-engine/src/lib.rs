@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 mod config;
 mod error;
 mod progress;
+pub mod speed_limit;
 
 use config::DownloadConfig;
 use progress::DownloadProgress;
