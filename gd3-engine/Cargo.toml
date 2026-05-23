@@ -18,6 +18,8 @@ bytes = "1"
 crc32fast = "1"
 tempfile = "3"
 thiserror = "2"
+urlencoding = "2"
+tokio-util = { version = "0.7", features = ["rt"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
