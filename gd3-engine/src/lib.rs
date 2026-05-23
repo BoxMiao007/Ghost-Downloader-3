@@ -1,8 +1,10 @@
 use pyo3::prelude::*;
 
+mod config;
 mod error;
 mod progress;
 
+use config::DownloadConfig;
 use progress::DownloadProgress;
 
 #[pyfunction]
@@ -14,5 +16,6 @@ fn version() -> &'static str {
 fn gd3_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_class::<DownloadProgress>()?;
+    m.add_class::<DownloadConfig>()?;
     Ok(())
 }
