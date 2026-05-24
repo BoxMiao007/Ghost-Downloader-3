@@ -305,7 +305,11 @@ class MainWindow(MSFluentWindow):
 
     def addTask(self, task) -> bool:
         try:
-            if cfg.enableCategory.value and task.category:
+            if (
+                cfg.enableCategory.value
+                and task.category
+                and task.path == Path(cfg.downloadFolder.value)
+            ):
                 folder = categoryService.folderOf(task.category)
                 if folder:
                     task.path = Path(folder)
