@@ -205,24 +205,15 @@ Copyright © 2026 XiaoYouChR.
 * [@zhiyiYo](https://github.com/zhiyiYo/) is amazing and provided a lot of help for this project.
 * [@空糖_SuGar](https://github.com/SuGar0218/) created the project banner.
 
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="
-      https://api.star-history.com/svg?repos=XiaoYouChR/Ghost-Downloader-3&type=Date&theme=dark
-    "
-  />
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="
-      https://api.star-history.com/svg?repos=XiaoYouChR/Ghost-Downloader-3&type=Date&theme=dark
-    "
-  />
-  <img
-    alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=XiaoYouChR/Ghost-Downloader-3&type=Date&theme=dark"
-  />
-</picture>
+## Star History
+
+<a href="https://www.star-history.com/?repos=BoxMiao007%2FGhost-Downloader-3%2CXiaoYouChR%2FGhost-Downloader-3&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=BoxMiao007/Ghost-Downloader-3%2CXiaoYouChR/Ghost-Downloader-3&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=BoxMiao007/Ghost-Downloader-3%2CXiaoYouChR/Ghost-Downloader-3&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=BoxMiao007/Ghost-Downloader-3%2CXiaoYouChR/Ghost-Downloader-3&type=date&legend=top-left" />
+ </picture>
+</a>
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
