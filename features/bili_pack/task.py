@@ -1,8 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from app.bases.models import TaskStage, TaskStatus
 
 if TYPE_CHECKING:
     from features.ffmpeg_pack.task import FFmpegStage
@@ -42,6 +40,6 @@ class BilibiliMergeStage(FFmpegStage):
     def updateOutputFile(self, taskPath: Path, taskTitle: str):
         baseTitle = taskTitle[:-4] if taskTitle.lower().endswith(".mp4") else taskTitle
         stem = f"{baseTitle}{self.pageSuffix}" if self.pageSuffix else baseTitle
-        self.outputFile = str(taskPath / f"{stem}.mp4")
-        self.videoPath = str(taskPath / f"{stem}.video.m4s")
-        self.audioPath = str(taskPath / f"{stem}.audio.m4s")
+        self.outputFile = taskPath / f"{stem}.mp4"
+        self.videoPath = taskPath / f"{stem}.video.m4s"
+        self.audioPath = taskPath / f"{stem}.audio.m4s"

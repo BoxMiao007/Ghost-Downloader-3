@@ -6,8 +6,8 @@ from time import time_ns
 from typing import ClassVar, Dict, Type, Any, TYPE_CHECKING, Iterable
 from uuid import uuid4
 
-from loguru import logger
 from PySide6.QtCore import QCoreApplication
+from loguru import logger
 from orjson import loads, dumps
 from qfluentwidgets import SettingCard
 
@@ -127,9 +127,6 @@ class TaskStage:
             self._task.updateStatus()
 
     def updateOutputFile(self, taskPath: Path, taskTitle: str):
-        pass
-
-    def onCompleted(self, task: "Task"):
         pass
 
     @classmethod
@@ -330,7 +327,6 @@ class Task:
                 currentStage = stage
                 worker = stage.workerType(stage)
                 await worker.run()
-                stage.onCompleted(self)
         except asyncio.CancelledError:
             logger.info("{} stopped", self.title)
             raise
