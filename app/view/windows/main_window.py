@@ -16,7 +16,7 @@ from app.services.browser_service import BrowserService
 from app.services.category_service import categoryService
 from app.services.core_service import coreService
 from app.services.feature_service import featureService
-from app.supports.config import cfg, DEFAULT_HEADERS, AUTHOR_URL, VERSION, FEEDBACK_URL, isWin10, \
+from app.supports.config import cfg, defaultHeaders, AUTHOR_URL, VERSION, FEEDBACK_URL, isWin10, \
     isLessThanWin10, toQFluentTheme
 from app.services.task_service import taskService
 from app.supports.signal_bus import signalBus
@@ -325,18 +325,14 @@ class MainWindow(MSFluentWindow):
             ):
                 folder = categoryService.folderOf(task.category)
                 if folder:
-                    task.path = Path(folder)
-                    for stage in task.stages:
-                        stage.updateOutputFile(task.path, task.title)
+                    task.applySettings({"path": Path(folder)})
 
             originalTitle = task.title
             if deduplicateFilename(task):
                 logger.info("检测到重名文件，已自动重命名 {} -> {}", originalTitle, task.title)
 
-            card = featureService.taskCard(task, self)
             taskService.add(task)
-            self.taskPage.addCard(card)
-            card.resumeTask()
+            coreService.createTask(task)
             return True
         except Exception as e:
             logger.opt(exception=e).error("无法创建任务卡片 {}", task.title)
@@ -449,7 +445,7 @@ class MainWindow(MSFluentWindow):
         installerName = installer["name"]
         payload = {
             "url": installer["browser_download_url"],
-            "headers": DEFAULT_HEADERS,
+            "headers": defaultHeaders(),
             "proxies": getProxies(),
             "path": Path(cfg.downloadFolder.value),
         }

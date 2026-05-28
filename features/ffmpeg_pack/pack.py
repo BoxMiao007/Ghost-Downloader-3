@@ -9,17 +9,16 @@ import niquests
 
 from app.bases.interfaces import FeaturePack
 from app.bases.models import Task, SpecialFileSize
-from app.supports.config import DEFAULT_HEADERS, cfg
+from app.supports.config import activeUserAgent, cfg
 from app.supports.utils import getProxies, toExecutable, toSafeFilename
 from .config import ffmpegConfig, ffmpegPaths
+from app.view.components.cards import UniversalTaskCard
 from .task import FFmpegResourceStage, FFmpegStage
 
 if TYPE_CHECKING:
-    from features.disk_pack.cards import InstallTaskCard
     from features.disk_pack.pack import buildToolInstallTask
     from features.http_pack.task import HttpTaskStage
 else:
-    from disk_pack.cards import InstallTaskCard
     from disk_pack.pack import buildToolInstallTask
     from http_pack.task import HttpTaskStage
 
@@ -29,7 +28,7 @@ FFMPEG_MERGE_URL = "gd3+ffmpeg://merge"
 _FFMPEG_RELEASE_API = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest"
 _FFMPEG_HEADERS = {
     "accept": "application/vnd.github+json",
-    "user-agent": DEFAULT_HEADERS["user-agent"],
+    "user-agent": activeUserAgent(),
 }
 
 
@@ -164,17 +163,10 @@ async def createMergeTask(payload: dict[str, Any]) -> Task:
         packId="ffmpeg",
         fileSize=max(0, videoTask.fileSize) + max(0, audioTask.fileSize),
         path=path,
-        metadata={
-            "videoFileName": videoTask.title,
-            "audioFileName": audioTask.title,
-        },
     )
     task.addStage(videoStage)
     task.addStage(audioStage)
     task.addStage(mergeStage)
-    # 触发新 stage 按 path/title 重算自身的输出路径
-    for stage in task.stages:
-        stage.updateOutputFile(task.path, task.title)
     return task
 
 
@@ -187,7 +179,6 @@ def _toResourceStage(
         fileSize=httpStage.fileSize,
         headers=httpStage.headers,
         proxies=httpStage.proxies,
-        outputFile=httpStage.outputFile,
         blockNum=httpStage.blockNum,
         supportsRange=httpStage.supportsRange,
         role=role,
@@ -221,7 +212,7 @@ class FFmpegPack(FeaturePack):
         return await createMergeTask(payload)
 
     def taskCard(self, task, parent=None):
-        # installFolder 在 buildToolInstallTask 时写入 metadata，区分 FFmpeg 安装任务和合并任务
-        if "installFolder" in task.metadata:
-            return InstallTaskCard(task, parent)
+        from disk_pack.task import InstallTask
+        if isinstance(task, InstallTask):
+            return UniversalTaskCard(task, parent)
         return super().taskCard(task, parent)
