@@ -2,7 +2,9 @@ use crate::resume::Segment;
 
 const MIN_SEGMENT_SIZE: u64 = 512 * 1024; // 512KB
 const MAX_CONNECTIONS: usize = 64;
+/// 吞吐提升超过该阈值才继续拆分，避免正常抖动导致连接数持续膨胀。
 const GROWTH_THRESHOLD: f64 = 0.05;
+/// 连续多次下降才标记慢分片，避免一次性网络抖动永久影响调度。
 const DECLINE_WINDOW: usize = 3;
 
 pub struct SchedulerConfig {
@@ -60,6 +62,7 @@ impl Scheduler {
     }
 
     fn compute_initial_connections(&self) -> usize {
+        // 探测速率越低，越倾向于多连接；高速链路少开连接，减少服务器压力和调度开销。
         let throughput_mbps = self.config.probe_throughput as f64 / (1024.0 * 1024.0);
         let count = if throughput_mbps < 1.0 {
             8
@@ -92,6 +95,7 @@ impl Scheduler {
                 && active_count < MAX_CONNECTIONS
             {
                 self.decline_count = 0;
+                // 速度随连接数上升时，继续拆剩余最多的分片来试探链路上限。
                 if let Some(split) = self.find_largest_splittable(active_segments) {
                     return SchedulerDecision::Split(split);
                 }
@@ -99,6 +103,7 @@ impl Scheduler {
                 self.decline_count += 1;
                 if self.decline_count >= DECLINE_WINDOW && active_count > 2 {
                     self.decline_count = 0;
+                    // 不直接取消慢连接，只把它加入 no_split_ids，保留已建立连接的下载进度。
                     if let Some(id) = self.find_slowest(active_segments) {
                         self.no_split_ids.push(id);
                         return SchedulerDecision::MarkSlowest(id);
@@ -123,6 +128,7 @@ impl Scheduler {
             .filter(|s| {
                 s.status == 1
                     && !self.no_split_ids.contains(&s.id)
+                    // 剩余量不足时拆分收益低，还会增加恢复文件和连接调度成本。
                     && (s.end - s.downloaded) > MIN_SEGMENT_SIZE * 2
             })
             .max_by_key(|s| s.end - s.downloaded)?;
@@ -197,8 +203,22 @@ mod tests {
         let mut scheduler = Scheduler::new(config);
 
         let segments = vec![
-            Segment { id: 0, start: 0, downloaded: 1024 * 1024, end: 50 * 1024 * 1024, status: 1, retries: 0 },
-            Segment { id: 1, start: 50 * 1024 * 1024, downloaded: 51 * 1024 * 1024, end: 100 * 1024 * 1024, status: 1, retries: 0 },
+            Segment {
+                id: 0,
+                start: 0,
+                downloaded: 1024 * 1024,
+                end: 50 * 1024 * 1024,
+                status: 1,
+                retries: 0,
+            },
+            Segment {
+                id: 1,
+                start: 50 * 1024 * 1024,
+                downloaded: 51 * 1024 * 1024,
+                end: 100 * 1024 * 1024,
+                status: 1,
+                retries: 0,
+            },
         ];
 
         // 第一次评估，建立基线
@@ -221,8 +241,22 @@ mod tests {
         let mut scheduler = Scheduler::new(config);
 
         let segments = vec![
-            Segment { id: 0, start: 0, downloaded: 1024 * 1024, end: 50 * 1024 * 1024, status: 1, retries: 0 },
-            Segment { id: 1, start: 50 * 1024 * 1024, downloaded: 99 * 1024 * 1024, end: 100 * 1024 * 1024, status: 1, retries: 0 },
+            Segment {
+                id: 0,
+                start: 0,
+                downloaded: 1024 * 1024,
+                end: 50 * 1024 * 1024,
+                status: 1,
+                retries: 0,
+            },
+            Segment {
+                id: 1,
+                start: 50 * 1024 * 1024,
+                downloaded: 99 * 1024 * 1024,
+                end: 100 * 1024 * 1024,
+                status: 1,
+                retries: 0,
+            },
         ];
 
         let stolen = scheduler.steal_work(&segments);

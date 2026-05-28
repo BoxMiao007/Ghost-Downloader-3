@@ -1,9 +1,10 @@
 use pyo3::prelude::*;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::time::Instant;
 
 pub struct ProgressInner {
+    /// 下载线程高频更新，Python UI 线程轮询读取；Relaxed 足够，因为字段之间不要求强一致快照。
     pub received_bytes: AtomicU64,
     pub total_bytes: AtomicI64,
     pub speed: AtomicU64,
@@ -29,6 +30,7 @@ impl ProgressInner {
 #[derive(Clone)]
 pub struct DownloadProgress {
     inner: Arc<ProgressInner>,
+    /// 错误文本只在失败路径写入，使用 Mutex 保持 Python getter 返回完整字符串。
     error: Arc<std::sync::Mutex<Option<String>>>,
 }
 

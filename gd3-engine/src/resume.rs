@@ -20,6 +20,7 @@ const GHDX_MAGIC: &[u8; 4] = b"GHDX";
 const GHDX_VERSION: u16 = 1;
 const GHDX_HEADER_SIZE: usize = 32;
 const GHDX_SEGMENT_SIZE: usize = 32;
+/// Python Worker 的旧断点格式没有状态和校验，只用于读取迁移，不再由 Rust 引擎写入。
 const GHD_SEGMENT_SIZE: usize = 24; // 3 x u64 LE
 
 /// 解析旧版 .ghd 二进制格式（24字节分片：3 x u64 LE = start, progress, end）
@@ -96,17 +97,20 @@ pub fn write_ghdx(path: &Path, file_size: u64, segments: &[Segment]) -> Result<(
         // reserved [offset+30..offset+32] 保持为 0
     }
 
-    // 计算 CRC32（跳过 checksum 字段本身 [24..28]）
+    // checksum 写入前按 0 参与计算，使读写两端可用同一套 compute_crc32 逻辑。
     let checksum = compute_crc32(&buf);
     buf[24..28].copy_from_slice(&checksum.to_le_bytes());
 
-    // 原子写入：写入临时文件后重命名
+    // 断点文件可能被频繁刷新，临时文件 + rename 可避免崩溃时留下半截记录。
     let parent = path.parent().unwrap_or(Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     tmp.write_all(&buf)?;
     tmp.flush()?;
     tmp.persist(path).map_err(|e| {
-        EngineError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        EngineError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
     })?;
 
     Ok(())
@@ -129,7 +133,7 @@ pub fn read_ghdx(path: &Path) -> Result<(u64, Vec<Segment>), EngineError> {
         ));
     }
 
-    // 验证 CRC32
+    // 先校验再解析分片，避免损坏文件中的随机偏移被当作有效续传进度。
     let stored_checksum = u32::from_le_bytes(data[24..28].try_into().unwrap());
     let computed_checksum = compute_crc32(&data);
     if stored_checksum != computed_checksum {
@@ -155,12 +159,10 @@ pub fn read_ghdx(path: &Path) -> Result<(u64, Vec<Segment>), EngineError> {
     for i in 0..count {
         let offset = i * GHDX_SEGMENT_SIZE;
         let id = u32::from_le_bytes(segment_data[offset..offset + 4].try_into().unwrap());
-        let start =
-            u64::from_le_bytes(segment_data[offset + 4..offset + 12].try_into().unwrap());
+        let start = u64::from_le_bytes(segment_data[offset + 4..offset + 12].try_into().unwrap());
         let downloaded =
             u64::from_le_bytes(segment_data[offset + 12..offset + 20].try_into().unwrap());
-        let end =
-            u64::from_le_bytes(segment_data[offset + 20..offset + 28].try_into().unwrap());
+        let end = u64::from_le_bytes(segment_data[offset + 20..offset + 28].try_into().unwrap());
         let status = segment_data[offset + 28];
         let retries = segment_data[offset + 29];
 

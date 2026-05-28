@@ -5,16 +5,18 @@ use crate::speed_limit::SpeedLimiter;
 use crate::writer::DiskWriter;
 use futures::StreamExt;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 
 /// 单分片下载连接
 pub struct Connection {
     pub id: u32,
+    /// Segment 保存当前分片的边界和下一次写入偏移，退出时会回写到共享状态。
     pub segment: Segment,
     pub bytes_downloaded: Arc<AtomicU64>,
+    /// 某些服务器在 HTTP/2 分片请求下返回 5xx，重试时降级到 HTTP/1.1 提高兼容性。
     pub force_http1: bool,
 }
 
@@ -65,7 +67,16 @@ impl Connection {
             }
 
             match self
-                .download_range(url, headers, proxies, verify_ssl, writer, limiter, cancel, global_received)
+                .download_range(
+                    url,
+                    headers,
+                    proxies,
+                    verify_ssl,
+                    writer,
+                    limiter,
+                    cancel,
+                    global_received,
+                )
                 .await
             {
                 Ok(()) => {
@@ -77,7 +88,7 @@ impl Connection {
                     return Err(EngineError::Cancelled);
                 }
                 Err(e) => {
-                    // 5xx 错误时降级到 HTTP/1.1
+                    // 仅服务端错误触发 HTTP/1.1 降级，网络错误继续按原协议重试。
                     if is_server_error(&e) && !self.force_http1 {
                         self.force_http1 = true;
                     }
@@ -158,13 +169,14 @@ impl Connection {
                 lim.acquire(chunk_len).await;
             }
 
-            // 写入磁盘
+            // 使用 pwrite 按绝对偏移写入，避免并发分片共享文件游标导致错位。
             writer.pwrite(&chunk, write_offset)?;
 
-            // 更新计数器
+            // 计数器允许监控循环无锁读取速度；精确分片状态仍在任务结束时统一回写。
             write_offset += chunk_len;
             self.segment.downloaded += chunk_len;
-            self.bytes_downloaded.fetch_add(chunk_len, Ordering::Relaxed);
+            self.bytes_downloaded
+                .fetch_add(chunk_len, Ordering::Relaxed);
             global_received.fetch_add(chunk_len, Ordering::Relaxed);
         }
 

@@ -2,7 +2,7 @@ use crate::config::DownloadConfig;
 use crate::connection::Connection;
 use crate::error::EngineError;
 use crate::progress::{DownloadProgress, ProgressInner};
-use crate::resume::{read_ghdx, write_ghdx, Segment};
+use crate::resume::{Segment, read_ghdx, write_ghdx};
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerDecision};
 use crate::speed_limit::SpeedLimiter;
 use crate::writer::DiskWriter;
@@ -10,11 +10,11 @@ use crate::writer::DiskWriter;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use tokio::sync::Mutex as TokioMutex;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 
 /// 下载状态常量
@@ -33,9 +33,11 @@ const RESUME_SAVE_INTERVAL_MS: u64 = 2000;
 /// Python 可见的下载句柄
 #[pyclass]
 pub struct DownloadHandle {
+    /// 进度对象由下载线程和 Python UI 线程共享，只通过原子字段暴露可轮询状态。
     progress: DownloadProgress,
     cancel_token: CancellationToken,
     limiter: SpeedLimiter,
+    /// 保持后台线程句柄存活，避免 DownloadHandle 还在 Python 侧使用时线程被提前丢弃。
     #[allow(dead_code)]
     join_handle: Option<thread::JoinHandle<()>>,
 }
@@ -105,6 +107,7 @@ pub fn start_download_inner(config: DownloadConfig) -> PyResult<DownloadHandle> 
     let limiter_clone = limiter.clone();
     let progress_clone = progress.clone();
 
+    // PyO3 暴露的是同步 Python 对象，Tokio runtime 放到独立线程中运行，避免阻塞 Qt 事件循环。
     let join_handle = thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -160,37 +163,38 @@ async fn run_download(
     let file_size = config.file_size;
     let output_path = Path::new(&config.output_path);
 
-    // 创建磁盘写入器
+    // DiskWriter 会在已知大小时预分配文件；未知大小或不支持 Range 的任务仍按流式写入处理。
     let writer = Arc::new(DiskWriter::open(output_path, file_size)?);
 
     // 全局已接收字节计数器
     let global_received = Arc::new(AtomicU64::new(0));
 
-    // 确定恢复文件路径
-    let resume_path = config.resume_file.clone().unwrap_or_else(|| {
-        format!("{}.ghdx", config.output_path)
-    });
+    // Python 侧会显式传入 .ghdx；兜底路径用于直接调用扩展 API 的场景。
+    let resume_path = config
+        .resume_file
+        .clone()
+        .unwrap_or_else(|| format!("{}.ghdx", config.output_path));
 
     // 加载或创建初始分片
     let initial_segments = load_or_create_segments(&config, &resume_path)?;
 
-    // 设置已下载字节数（恢复场景）
-    let already_downloaded: u64 = initial_segments.iter().map(|s| s.downloaded - s.start).sum();
+    // 恢复文件中的 downloaded 是绝对偏移，转换成已接收字节数后同步给 Python 进度对象。
+    let already_downloaded: u64 = initial_segments
+        .iter()
+        .map(|s| s.downloaded - s.start)
+        .sum();
     global_received.store(already_downloaded, Ordering::Relaxed);
     progress
         .inner()
         .received_bytes
         .store(already_downloaded, Ordering::Relaxed);
 
-    // 共享分片状态
+    // 连接任务会在完成或失败时回写 Segment；监控循环定期读取它来保存断点和做调度决策。
     let segments = Arc::new(TokioMutex::new(initial_segments));
 
     // 活跃连接计数
     let active_count = Arc::new(AtomicU64::new(0));
-    progress
-        .inner()
-        .connections
-        .store(0, Ordering::Relaxed);
+    progress.inner().connections.store(0, Ordering::Relaxed);
 
     // 启动初始连接任务
     let pending_segments: Vec<Segment> = {
@@ -239,7 +243,7 @@ async fn run_download(
     // 最终同步磁盘
     writer.sync()?;
 
-    // 删除恢复文件
+    // 只有完整成功后删除恢复文件；暂停/取消路径会保留它供下次续传。
     let _ = std::fs::remove_file(&resume_path);
 
     Ok(())
@@ -252,19 +256,14 @@ fn load_or_create_segments(
 ) -> Result<Vec<Segment>, EngineError> {
     let path = Path::new(resume_path);
 
-    // 尝试加载已有恢复文件
+    // 只读取新版 .ghdx。旧版 .ghd 由 Python Worker 维护，避免两套引擎误用不同格式的断点文件。
     if path.exists() {
-        match read_ghdx(path) {
-            Ok((_file_size, segments)) => {
-                return Ok(segments);
-            }
-            Err(_) => {
-                // 恢复文件损坏，忽略并重新创建
-            }
+        if let Ok((_file_size, segments)) = read_ghdx(path) {
+            return Ok(segments);
         }
     }
 
-    // 创建新的分片分配
+    // 创建新的分片分配。未知大小无法计算 Range 边界，只能交给单连接从头下载。
     let file_size = if config.file_size > 0 {
         config.file_size as u64
     } else {
@@ -273,7 +272,7 @@ fn load_or_create_segments(
             id: 0,
             start: 0,
             downloaded: 0,
-            end: 0, // 0 表示未知大小
+            end: 0,
             status: 0,
             retries: 0,
         }]);
@@ -282,7 +281,8 @@ fn load_or_create_segments(
     let sched_config = SchedulerConfig {
         file_size,
         supports_range: config.supports_range,
-        probe_throughput: 0, // 初始无探测数据
+        // 当前 Python 入口尚未把探测速率传进来，调度器按保守默认值选择初始连接数。
+        probe_throughput: 0,
         max_connections: config.max_connections as usize,
     };
     let mut scheduler = Scheduler::new(sched_config);
@@ -344,7 +344,7 @@ async fn spawn_connection(
             )
             .await;
 
-        // 更新共享分片状态
+        // 连接内部持有最新 downloaded/retries/status，退出时回写共享表供断点保存。
         {
             let mut segs = segments.lock().await;
             if let Some(s) = segs.iter_mut().find(|s| s.id == seg_id) {
@@ -401,11 +401,9 @@ async fn supervisor_loop(
     loop {
         sleep(Duration::from_millis(SUPERVISOR_INTERVAL_MS)).await;
 
-        // 检查取消
+        // 取消时先等待连接任务退出，再写断点文件；否则可能保存到落后于磁盘写入的进度。
         if cancel.is_cancelled() {
-            // 等待所有任务结束
             drain_tasks(&task_set).await;
-            // 保存恢复文件
             save_resume(&segments, file_size, resume_path).await;
             return Err(EngineError::Cancelled);
         }
@@ -420,7 +418,10 @@ async fn supervisor_loop(
             .received_bytes
             .store(current_received, Ordering::Relaxed);
         let active = active_count.load(Ordering::Relaxed);
-        progress.inner().connections.store(active, Ordering::Relaxed);
+        progress
+            .inner()
+            .connections
+            .store(active, Ordering::Relaxed);
         last_received = current_received;
 
         // 检查是否完成
@@ -449,21 +450,20 @@ async fn supervisor_loop(
         // 调度决策
         if let Some(ref mut sched) = scheduler {
             let segs = segments.lock().await;
-            let active_segs: Vec<Segment> = segs
-                .iter()
-                .filter(|s| s.status == 1)
-                .cloned()
-                .collect();
+            let active_segs: Vec<Segment> =
+                segs.iter().filter(|s| s.status == 1).cloned().collect();
             let decision = sched.evaluate(speed, &active_segs, active as usize);
             drop(segs);
 
             match decision {
                 SchedulerDecision::Split(alloc) => {
-                    // 缩小原分片的 end，启动新连接
+                    // 新连接接管后半段，原连接只需缩短 end，避免两个连接继续下载同一段。
                     {
                         let mut segs = segments.lock().await;
-                        // 找到被分割的分片并缩小其 end
-                        if let Some(parent) = segs.iter_mut().find(|s| s.end == alloc.end && s.status == 1 && s.id != alloc.id) {
+                        if let Some(parent) = segs
+                            .iter_mut()
+                            .find(|s| s.end == alloc.end && s.status == 1 && s.id != alloc.id)
+                        {
                             parent.end = alloc.start;
                         }
                     }
@@ -492,7 +492,7 @@ async fn supervisor_loop(
                     .await;
                 }
                 SchedulerDecision::MarkSlowest(_id) => {
-                    // 标记最慢连接，不再分割它
+                    // 调度器已记录该分片 ID；这里不取消连接，只阻止后续继续拆慢分片。
                 }
                 SchedulerDecision::NoOp => {}
             }
@@ -544,11 +544,7 @@ async fn cleanup_finished_tasks(
 }
 
 /// 保存恢复文件
-async fn save_resume(
-    segments: &Arc<TokioMutex<Vec<Segment>>>,
-    file_size: u64,
-    resume_path: &str,
-) {
+async fn save_resume(segments: &Arc<TokioMutex<Vec<Segment>>>, file_size: u64, resume_path: &str) {
     let segs = segments.lock().await;
     let _ = write_ghdx(Path::new(resume_path), file_size, &segs);
 }
