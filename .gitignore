@@ -45,8 +45,14 @@ gd3-engine/target/
 
 # 忽略 Claude Code
 .claude/
+CLAUDE.md
 AGENTS.md
 docs/superpowers/
+
+# 忽略本地 AI Agent 与 Trellis 工作区
+.agents/
+.codex/
+.trellis/
 
 # 忽略 Python 打包产物
 *.egg-info/
@@ -74,7 +80,3 @@ Desktop.ini
 
 # 忽略 Nuitka 中间产物
 *.build/
-
-# Claude Code
-CLAUDE.md
-AGENTS.md
