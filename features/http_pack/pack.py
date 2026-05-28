@@ -17,6 +17,11 @@ from .task import HttpTask, HttpTaskStage
 
 
 def _contentLength(headers: dict[str, str]) -> int:
+    """从 Content-Length 解析文件大小。
+
+    返回 SpecialFileSize.UNKNOWN 表示响应没有给出可信正整数大小；调用方不能把
+    0 当成空文件处理，因为很多动态响应会省略该头。
+    """
     value = headers.get("content-length", "").strip()
     if not value:
         return SpecialFileSize.UNKNOWN
@@ -30,6 +35,7 @@ def _contentLength(headers: dict[str, str]) -> int:
 
 
 def _rangeSize(headers: dict[str, str]) -> int:
+    """从 Content-Range 的 total 部分解析完整文件大小。"""
     contentRange = headers.get("content-range", "").strip()
     if not contentRange or "/" not in contentRange:
         return SpecialFileSize.UNKNOWN
@@ -48,6 +54,11 @@ def _rangeSize(headers: dict[str, str]) -> int:
 
 
 async def _sendProbe(client: niquests.AsyncSession, url: str, headers: dict, proxies: dict) -> tuple[int, dict[str, str], str]:
+    """发送一次探测请求并返回状态码、规范化响应头和最终 URL。
+
+    响应体不会被读取，必须始终 close，避免探测阶段占用连接池连接。416 也被视为
+    可分析响应，因为部分服务器会在 416 的 Content-Range 中暴露真实大小。
+    """
     requestHeaders, requestCookies = splitCookies(headers)
     response = await client.get(
         url,
@@ -68,6 +79,12 @@ async def _sendProbe(client: niquests.AsyncSession, url: str, headers: dict, pro
 
 
 async def _probe(url: str, headers: dict, proxies: dict) -> tuple[int, bool, str, dict[str, str]]:
+    """探测 HTTP 资源大小与 Range 支持。
+
+    优先请求 bytes=1-1，能区分多数服务器是否真正支持分片下载。若服务器返回
+    200 且大小未知或可疑，再回退到 bytes=0-0；最终返回的 supportsRange 决定
+    后续 Worker 是否可以暂停、断点续传和多连接下载。
+    """
     async with niquests.AsyncSession(happy_eyeballs=True) as client:
         client.trust_env = False
 
@@ -119,6 +136,12 @@ async def _probe(url: str, headers: dict, proxies: dict) -> tuple[int, bool, str
 
 
 def _fileName(url: str, headers: dict) -> str:
+    """按 HTTP 语义和 URL 信息推导安全文件名。
+
+    优先级为 Content-Disposition、Content-Location、URL 查询里的响应覆盖、
+    URL path，最后才按时间生成兜底名称。返回值已经过 toSafeFilename 清洗，
+    可直接用于 Task.title。
+    """
     fileName = ""
 
     cd = headers.get("content-disposition", "")
@@ -163,6 +186,8 @@ def _fileName(url: str, headers: dict) -> str:
 
 
 class HttpPack(FeaturePack):
+    """默认 HTTP/HTTPS 下载插件。"""
+
     packId = "http"
     priority = 100
 
@@ -170,6 +195,12 @@ class HttpPack(FeaturePack):
         return urlparse(url).scheme.lower() in {"http", "https"}
 
     async def parse(self, payload: dict) -> Task:
+        """解析 HTTP 下载任务。
+
+        payload 可以携带 filename/fileSize/supportsRange 来跳过网络探测，浏览器
+        扩展或其他插件复用 HTTP 下载能力时会走这条路径。engine 字段来自任务级
+        选择；未提供时使用全局 cfg.httpEngine。
+        """
         url: str = payload["url"]
         headers: dict = payload.get("headers", defaultHeaders())
         proxies: dict = payload.get("proxies", getProxies())

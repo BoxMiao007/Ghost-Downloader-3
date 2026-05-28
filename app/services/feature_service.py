@@ -17,16 +17,29 @@ if TYPE_CHECKING:
 
 
 class FeatureService:
+    """FeaturePack 的发现、加载、匹配和 UI 委派服务。
+
+    插件目录来自可执行文件旁的 features/，这样源码运行和打包运行都能复用同
+    一套发现逻辑。服务只保存已成功加载的插件实例，解析任务时再按 priority
+    顺序匹配 URL。
+    """
+
     def __init__(self):
         self._packs: dict[str, FeaturePack] = {}
         self._featuresPath = executableDir / "features"
 
     def _sortedPacks(self) -> list[tuple[str, FeaturePack]]:
+        """按匹配优先级返回插件。
+
+        priority 数值越小越先匹配；同优先级按目录名稳定排序，避免不同文件系统
+        遍历顺序导致 URL 被不同插件接管。
+        """
         items = list(self._packs.items())
         items.sort(key=lambda item: (item[1].priority, item[0]))
         return items
 
     def _discover(self) -> list[dict]:
+        """扫描 features/ 目录并读取每个插件的 manifest。"""
         featurePacks = []
 
         if not self._featuresPath.exists():
@@ -52,6 +65,11 @@ class FeatureService:
         return featurePacks
 
     def _manifest(self, packDirectory: Path) -> dict[str, Any] | None:
+        """读取并校验 FeaturePack manifest。
+
+        返回值只包含后续加载所需的 entry 和 dependencies。这里尽早过滤无效
+        manifest，后续拓扑排序和动态导入就不需要处理缺字段的情况。
+        """
         manifestPath = packDirectory / "manifest.toml"
         if not manifestPath.exists():
             logger.warning("FeaturePack 缺少 manifest.toml: {}", packDirectory)
@@ -92,6 +110,11 @@ class FeatureService:
         }
 
     def _loadOrder(self, featurePacks: list[dict]) -> list[dict]:
+        """根据 dependencies 计算插件加载顺序。
+
+        采用 DFS 拓扑排序，并在检测到缺失依赖或循环依赖时跳过当前插件。被跳过
+        的插件不会出现在最终列表中，避免部分加载造成后续匹配不确定。
+        """
         packInfoByName = {pack["name"]: pack for pack in featurePacks}
         visiting: list[str] = []
         visited: set[str] = set()
@@ -132,6 +155,11 @@ class FeatureService:
         return [pack for pack in ordered if pack["name"] not in skipped]
 
     def _loadPack(self, packInfo: dict, mainWindow: "MainWindow"):
+        """动态导入并实例化单个 FeaturePack。
+
+        使用目录名作为模块名，允许插件内部使用相对导入。导入失败时会从
+        sys.modules 移除半初始化模块，避免下次加载复用损坏状态。
+        """
         try:
             packageName = packInfo["name"]
             moduleName = packageName
@@ -195,6 +223,11 @@ class FeatureService:
             return False
 
     def _toUrl(self, url: str) -> str:
+        """补齐用户省略的 URL scheme。
+
+        输入为空时保持为空，让 parse() 负责给出明确错误；没有 scheme 时默认按
+        HTTP 下载处理，符合下载器粘贴裸域名的使用习惯。
+        """
         url = url.strip()
         if not url:
             return url
@@ -203,10 +236,16 @@ class FeatureService:
         return url
 
     def matches(self, url: str) -> bool:
+        """判断是否存在插件可以处理该 URL。"""
         normalizedUrl = self._toUrl(url)
         return self.matchPack(normalizedUrl) is not None
 
     def matchPack(self, url: str) -> tuple[str, FeaturePack] | None:
+        """返回第一个匹配 URL 的插件。
+
+        单个插件 matches() 出错不会中断全局匹配，只记录错误并继续尝试其他插件。
+        这能避免第三方插件问题拖垮基础 HTTP 下载能力。
+        """
         for packName, packInstance in self._sortedPacks():
             try:
                 if packInstance.matches(url):
@@ -216,12 +255,18 @@ class FeatureService:
         return None
 
     def packOf(self, task: Task) -> FeaturePack | None:
+        """根据 Task.packId 找回插件实例。"""
         for pack in self._packs.values():
             if pack.packId == task.packId:
                 return pack
         return None
 
     async def parse(self, payload: dict) -> Task:
+        """将外部载荷交给匹配插件解析成 Task。
+
+        这里会规范化 URL 并写回 payload 副本，保证插件看到的是同一套 URL 规则；
+        原 payload 不会被就地修改，避免调用方复用字典时被隐式污染。
+        """
         url = str(payload.get("url", "")).strip()
         if not url:
             raise ValueError("URL 不能为空")
@@ -240,18 +285,21 @@ class FeatureService:
         return await packInstance.parse(payload)
 
     def taskCard(self, task: Task, parent=None):
+        """委派插件创建任务卡片。"""
         packInstance = self.packOf(task)
         if packInstance is None:
             raise ValueError(f"未找到 Task 对应的 FeaturePack: {task.packId}")
         return packInstance.taskCard(task, parent)
 
     def resultCard(self, task: Task, parent=None):
+        """委派插件创建结果卡片。"""
         packInstance = self.packOf(task)
         if packInstance is None:
             raise ValueError(f"未找到 Task 对应的 FeaturePack: {task.packId}")
         return packInstance.resultCard(task, parent)
 
     def dialogCards(self, parent) -> list["ParseSettingCard"]:
+        """收集所有插件在新增任务对话框中的设置卡片。"""
         cards = []
         for packName, packInstance in self._sortedPacks():
             packConfig = packInstance.config
@@ -265,6 +313,11 @@ class FeatureService:
         return cards
 
     def load(self, mainWindow: "MainWindow"):
+        """发现并加载全部 FeaturePack。
+
+        该方法在主窗口创建后调用，因此插件可以安全访问 mainWindow.settingPage。
+        加载失败的插件会被跳过，已成功加载的插件仍然可用。
+        """
         logger.info("开始加载 FeaturePacks")
 
         featurePacks = self._discover()

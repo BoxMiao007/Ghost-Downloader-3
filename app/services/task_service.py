@@ -9,6 +9,12 @@ from app.supports.paths import APP_DATA_DIR
 
 
 class TaskService(QObject):
+    """任务内存表与 Memory.log 持久化服务。
+
+    CoreService 负责运行任务，TaskService 负责保存和恢复任务定义。写文件通过
+    200ms debounce 合并短时间内的多次变更，并采用临时文件替换，降低崩溃时
+    写出半截 JSONL 的概率。
+    """
 
     taskAdded = Signal(object)
     taskRemoved = Signal(str)
@@ -35,10 +41,20 @@ class TaskService(QObject):
         self._flushRequested.connect(self._onFlushRequested)
 
     def load(self):
+        """从 Memory.log 读取全部任务。
+
+        必须在允许 flush 前调用；_flush 会检查 _loaded，防止启动期间空内存表
+        意外覆盖已有任务记录。
+        """
         self.tasks = self._readAll()
         self._loaded = True
 
     def _readAll(self) -> dict[str, Task]:
+        """读取 JSONL 任务记录。
+
+        单行损坏只跳过该任务并记录错误，不能阻止其他任务恢复；这是用户数据文件
+        的容错边界。
+        """
         tasks: dict[str, Task] = {}
         with open(self.recordFile, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -56,6 +72,7 @@ class TaskService(QObject):
         return tasks
 
     def add(self, task: Task):
+        """新增任务并安排持久化。"""
         if task.taskId in self.tasks:
             raise ValueError(f"task {task.taskId} already exists")
         self.tasks[task.taskId] = task
@@ -63,6 +80,7 @@ class TaskService(QObject):
         self.taskAdded.emit(task)
 
     def remove(self, task: Task):
+        """删除任务记录并通知 UI。"""
         if task.taskId not in self.tasks:
             return
         taskId = task.taskId
@@ -82,10 +100,16 @@ class TaskService(QObject):
 
     @Slot()
     def _onFlushRequested(self):
+        """在 QObject 所在线程启动 debounce 定时器。"""
         self._flushTimer.start()
 
     @Slot()
     def _flush(self):
+        """把当前任务表完整写回 Memory.log。
+
+        这里采用全量重写而不是追加日志，是为了让删除任务和任务字段变化能直接
+        反映到磁盘；写入失败时保留旧 recordFile，下一次 flush 可继续尝试。
+        """
         if not self._loaded:
             logger.warning("skip flush because task service has not been loaded")
             return

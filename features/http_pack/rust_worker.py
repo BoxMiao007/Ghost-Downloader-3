@@ -7,9 +7,18 @@ from app.supports.config import cfg
 
 
 class RustHttpWorker(Worker):
-    """Rust HTTP 引擎 Worker 薄包装"""
+    """Rust HTTP 引擎 Worker 薄包装。
+
+    Python 侧只负责把 HttpTaskStage 转换成 gd3_engine.DownloadConfig，并轮询
+    Rust 句柄的共享进度。真实下载、断点记录和限速逻辑在 Rust 扩展内完成。
+    """
 
     async def run(self):
+        """启动 Rust 下载并把引擎状态同步回 Stage。
+
+        Rust 引擎使用 .ghdx 作为断点记录，和 Python Worker 的 .ghd 格式不同。
+        取消任务时调用 handle.pause()，让扩展有机会落盘进度后再把阶段置为 PAUSED。
+        """
         import gd3_engine
 
         config = gd3_engine.DownloadConfig(

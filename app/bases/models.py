@@ -22,6 +22,12 @@ if TYPE_CHECKING:
 
 
 class TaskStatus(IntEnum):
+    """任务和阶段共享的生命周期状态。
+
+    Task.updateStatus() 会从所有 Stage 聚合出 Task 状态，因此新增状态时
+    必须同时审视阶段聚合、持久化反序列化和 UI 展示逻辑。
+    """
+
     WAITING = auto()
     RUNNING = auto()
     PAUSED = auto()
@@ -30,11 +36,19 @@ class TaskStatus(IntEnum):
 
 
 class SpecialFileSize(IntEnum):
+    """下载探测无法得到普通正整数大小时使用的哨兵值。"""
+
     NOT_SUPPORTED = -1
     UNKNOWN = 0
 
 
 def _toSerializable(obj: Any) -> Any:
+    """递归转换为 orjson 可写入的结构。
+
+    dataclass 字段只有 repr=True 才会被持久化；这让 workerType、stageType
+    等运行期对象不会进入 Memory.log。修改字段 repr 时要同步确认任务恢复
+    是否仍能依靠 registry 找回正确子类。
+    """
     if isinstance(obj, TaskStatus):
         return obj.name
     if isinstance(obj, Path):
@@ -61,6 +75,11 @@ def _toSerializable(obj: Any) -> Any:
 
 
 def _filterProperty(cls: type, obj: dict[str, Any]) -> dict[str, Any]:
+    """仅保留目标 dataclass 构造函数能接收的字段。
+
+    任务记录会跨版本保存在用户目录中。这里丢弃未知字段，是为了让新版应用
+    尽量能读取旧记录，也让删除字段后的记录恢复不至于直接失败。
+    """
     allowed = {field.name for field in dataclass_fields(cls) if field.init}
     for klass in cls.__mro__:
         for name, val in vars(klass).items():
@@ -71,6 +90,12 @@ def _filterProperty(cls: type, obj: dict[str, Any]) -> dict[str, Any]:
 
 @dataclass(kw_only=True)
 class TaskFile:
+    """多文件任务中的一个可选文件条目。
+
+    index 是插件内稳定编号，Task.setSelection() 依赖它把 UI 选择映射回
+    Stage；relativePath 必须是相对路径，避免恢复任务时越过下载目录。
+    """
+
     index: int
     relativePath: str
     size: int = 0
@@ -81,6 +106,13 @@ class TaskFile:
 
 @dataclass(kw_only=True)
 class TaskStage:
+    """任务的最小执行单元。
+
+    每个子类会自动登记到 _registry，反序列化时通过 type 字段恢复具体
+    Stage 类型。Stage 只描述进度、状态和执行参数；真正的异步执行由
+    workerType 指向的 Worker 完成。
+    """
+
     _registry: ClassVar[Dict[str, Type["TaskStage"]]] = {}
     workerType: ClassVar[Type["Worker"]]
     canPause: ClassVar[bool] = True
@@ -102,9 +134,18 @@ class TaskStage:
 
     @property
     def task(self) -> "Task":
+        """返回所属 Task。
+
+        Stage 必须通过 Task.addStage() 或 Task.__post_init__ 绑定后才能访问
+        task；独立构造的 Stage 访问该属性会暴露调用方的生命周期错误。
+        """
         return self._task
 
     def setStatus(self, status: TaskStatus, sync: bool = True):
+        """更新阶段状态，并按需回写父任务聚合状态。
+
+        sync=False 用于批量修改多个阶段，避免每次阶段变更都重复聚合任务状态。
+        """
         self.status = status
         if status == TaskStatus.COMPLETED:
             self.progress = 100
@@ -120,11 +161,13 @@ class TaskStage:
             self._task.updateStatus()
 
     def setError(self, error: Any, sync: bool = True):
+        """把任意异常或错误对象记录为阶段失败原因。"""
         message = repr(error).strip() if error is not None else ""
         self.error = message
         self.setStatus(TaskStatus.FAILED, sync=sync)
 
     def reset(self, sync: bool = True):
+        """重置阶段进度以便重新调度。"""
         self.status = TaskStatus.WAITING
         self.progress = 0
         self.receivedBytes = 0
@@ -143,10 +186,16 @@ class TaskStage:
         raise NotImplementedError
 
     def serialize(self) -> bytes:
+        """序列化为任务记录使用的 JSON bytes。"""
         return dumps(_toSerializable(self))
 
     @classmethod
     def deserialize(cls, data: Any) -> "TaskStage":
+        """从任务记录恢复 Stage。
+
+        这里依赖子类名作为 type 标识，重命名 Stage 类会影响用户历史任务恢复；
+        如需重命名，应保留兼容映射或迁移 Memory.log。
+        """
         if isinstance(data, (bytes, bytearray, str)):
             obj = loads(data)
         else:
@@ -165,6 +214,13 @@ class TaskStage:
 
 @dataclass(kw_only=True, eq=False)
 class Task:
+    """下载任务聚合根。
+
+    Task 是 UI、持久化和 CoreService 调度共享的稳定对象。它可以包含一个
+    或多个 Stage：普通 HTTP 通常只有一个 Stage，Bilibili/FFmpeg 等组合任务
+    会用多个 Stage 串行表达下载、合并或安装步骤。
+    """
+
     _registry: ClassVar[Dict[str, Type["Task"]]] = {}
     supportsEdit: ClassVar[bool] = False
 
@@ -188,6 +244,11 @@ class Task:
 
     @property
     def outputFolder(self) -> str:
+        """任务默认输出目录。
+
+        单文件任务可能通过 Stage.outputFile 指向具体文件；清理逻辑会同时考虑
+        outputFolder 和每个 Stage 暴露的 outputFile。
+        """
         return str(self.path / self.title)
 
     @property
@@ -208,6 +269,11 @@ class Task:
         return ""
 
     def __post_init__(self):
+        """完成任务构造后的规范化和反向绑定。
+
+        反序列化路径也会进入这里，所以不要放置会改变历史任务语义的探测或
+        网络操作；只能做文件名清洗、Stage 绑定和分类补全这类确定性操作。
+        """
         self.title = toSafeFilename(self.title, fallback="download")
         for stage in self.stages:
             stage._bindTask(self)
@@ -222,6 +288,7 @@ class Task:
         self.title = toSafeFilename(title, fallback=self.title or "download")
 
     def currentSnapshot(self) -> tuple[float, int, int]:
+        """返回 UI 刷新所需的聚合进度、速度和已接收字节数。"""
         if not self.stages:
             return 0.0, 0, 0
 
@@ -245,6 +312,11 @@ class Task:
         self.updateStatus()
 
     def updateStatus(self) -> TaskStatus:
+        """根据所有阶段状态重新计算任务状态。
+
+        FAILED 优先级最高，COMPLETED 要求所有阶段完成；混合 WAITING/PAUSED
+        会回到 WAITING，方便 CoreService 后续继续调度未完成阶段。
+        """
         if not self.stages:
             return self.status
 
@@ -263,6 +335,11 @@ class Task:
         return self.status
 
     def setStatus(self, status: TaskStatus) -> TaskStatus:
+        """批量设置未完成阶段状态。
+
+        从 FAILED 重新切到 RUNNING 时会先重置失败阶段，让用户重新开始任务时
+        不需要手动清理错误状态。
+        """
         if not self.stages:
             self.status = status
             return self.status
@@ -287,6 +364,11 @@ class Task:
         return self.updateStatus()
 
     def pendingStages(self) -> Iterable[TaskStage]:
+        """按 stageIndex 顺序产出仍需执行的阶段。
+
+        这是串行执行模型的边界：Task.run() 一次只运行一个 Stage。循环期间若
+        任务状态被改为非 RUNNING，会停止继续产出，支持暂停和取消。
+        """
         self.stages.sort(key=lambda stage: stage.stageIndex)
         for stage in self.stages:
             if self.status != TaskStatus.RUNNING:
@@ -296,6 +378,12 @@ class Task:
             yield stage
 
     def setSelection(self, selectedIndexes: list[int]):
+        """同步多文件任务的文件选择和 Stage 列表。
+
+        只有设置了 files 与 stageType 的任务支持选择。已有 Stage 会尽量保留，
+        取消选择的文件对应 Stage 会被删除，新选文件再通过 stageType.fromFile()
+        补齐，避免无谓丢失已下载进度。
+        """
         if self.files is None or self.stageType is None:
             return
 
@@ -337,12 +425,13 @@ class Task:
         return []
 
     def tryKeepProgress(self, newTask: "Task") -> bool:
-        # 子类默认不支持热替换 → 调用方走 replaceWith; HttpTask 在 fileSize / stage
-        # 数一致时能把新 url/headers 灌进旧 stage 保住进度, 此时返回 True
+        # 子类默认不支持热替换，调用方会走 replaceWith。HttpTask 在文件大小和
+        # Stage 数兼容时可只替换 URL/headers/proxies，从而保留已有进度。
         return False
 
     def replaceWith(self, newTask: "Task") -> None:
-        # taskId / path / category 留, 其余 (url / title / fileSize / stages) 全换
+        # taskId、path、category 是用户本地身份和归档选择，替换任务时必须保留；
+        # url、title、fileSize、stages 来自重新解析结果，需要整体覆盖。
         self.cleanup()
         self.url = newTask.url
         self.title = newTask.title
@@ -353,6 +442,12 @@ class Task:
         self.updateStatus()
 
     def cleanup(self):
+        """清理任务输出和断点记录文件。
+
+        Stage.cleanup() 先执行插件自定义清理；随后再删除通用 outputFolder、
+        outputFile 和 Python HTTP 引擎的 .ghd 记录。Rust 引擎的 .ghdx 由对应
+        Worker/引擎侧管理，避免这里误删非本任务格式的文件。
+        """
         for stage in self.stages:
             stage.cleanup()
 
@@ -369,6 +464,11 @@ class Task:
             removePath(Path(str(target) + ".ghd"))
 
     async def run(self):
+        """串行执行所有待处理阶段。
+
+        CoreService 负责并发任务数，Task 只保证本任务内部阶段顺序。Worker 抛出
+        未处理异常时会写入当前 Stage.error 并继续向上抛，让调度层释放运行槽位。
+        """
         currentStage = None
         try:
             for stage in self.pendingStages():
@@ -385,10 +485,16 @@ class Task:
             raise
 
     def serialize(self) -> bytes:
+        """序列化任务到 JSON bytes，供 TaskService 写入 Memory.log。"""
         return dumps(_toSerializable(self))
 
     @classmethod
     def deserialize(cls, data: Any) -> "Task":
+        """从持久化记录恢复任务对象。
+
+        Task 和 TaskStage 都通过 type 字段查 registry。没有 type 或找不到子类时
+        会退回基类，保证旧记录尽量可读，但插件特有字段可能因此被过滤掉。
+        """
         if isinstance(data, (bytes, bytearray, str)):
             obj = loads(data)
         else:
@@ -418,6 +524,13 @@ class Task:
 
 
 class PackConfig:
+    """FeaturePack 配置基类。
+
+    子类中声明的 ConfigItem 会被挂到 cfg.__class__ 上并立即 cfg.load()，
+    这样插件配置能复用全局配置文件。新增配置项时要确保属性名稳定，否则用户
+    已有配置键会变成孤儿字段。
+    """
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 

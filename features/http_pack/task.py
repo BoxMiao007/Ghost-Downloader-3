@@ -22,6 +22,12 @@ if TYPE_CHECKING:
 
 @dataclass(kw_only=True, eq=False)
 class HttpTask(Task):
+    """单文件 HTTP 下载任务。
+
+    HTTP 任务通常只有一个 HttpTaskStage。编辑任务时若文件大小不变，可以只替换
+    URL、请求头和代理配置，从而保留断点记录与已下载文件。
+    """
+
     packId: str = "http"
     supportsEdit: ClassVar[bool] = True
 
@@ -58,6 +64,7 @@ class HttpTask(Task):
         ]
 
     def applySettings(self, payload):
+        """应用编辑对话框提交的 HTTP 参数。"""
         super().applySettings(payload)
         if "url" in payload:
             self.url = payload["url"]
@@ -68,6 +75,11 @@ class HttpTask(Task):
             self.stage.proxies = payload["proxies"]
 
     def tryKeepProgress(self, newTask: Task) -> bool:
+        """在重新解析任务后尽量保留已有下载进度。
+
+        只有新旧任务都是 HttpTask 且文件大小一致时才复用旧 Stage。Range 支持性
+        会更新为新探测结果，避免服务器能力变化后继续使用错误下载策略。
+        """
         if not isinstance(newTask, HttpTask):
             return False
         if self.fileSize <= 0 or self.fileSize != newTask.fileSize:
@@ -83,6 +95,12 @@ class HttpTask(Task):
 
 @dataclass(kw_only=True)
 class HttpTaskStage(TaskStage):
+    """HTTP 下载阶段。
+
+    engine 记录创建任务时选择的实现，反序列化后 __post_init__ 会重新判断 Rust
+    引擎是否可用；不可用时自然回退到 Python Worker，保证历史任务可恢复。
+    """
+
     workerType: type = field(init=False, repr=False)
     canPause: bool = field(init=False, default=True)
 
@@ -98,6 +116,11 @@ class HttpTaskStage(TaskStage):
 
     @property
     def outputFile(self) -> str:
+        """阶段输出文件路径。
+
+        默认写入任务目录下的任务标题文件；outputFileOverride 用于 FFmpeg/Bilibili
+        等复用 HTTP Stage 时把资源写到特定临时路径。
+        """
         return self.outputFileOverride or str(Path(self.task.path) / self.task.title)
 
     @outputFile.setter
@@ -106,7 +129,7 @@ class HttpTaskStage(TaskStage):
 
     def __post_init__(self):
         self.canPause = self.supportsRange
-        # 动态选择 Worker 类型
+        # workerType 不参与序列化，因此任务恢复时必须重新根据 engine 选择实现。
         if self.engine == "rust":
             from app.supports.engine import isRustEngineAvailable
             if isRustEngineAvailable():
@@ -118,12 +141,25 @@ class HttpTaskStage(TaskStage):
 
 @dataclass
 class HttpSubworker:
+    """Python HTTP Worker 的一个字节范围下载单元。
+
+    start 是分片起点，progress 是下一次写入偏移，end 是闭区间终点；特殊 end
+    值来自 SpecialFileSize，用于表达未知大小或服务器不支持 Range。
+    """
+
     start: int
     progress: int
     end: int
 
 
 class HttpWorker(Worker):
+    """基于 niquests 的 Python HTTP 下载实现。
+
+    该 Worker 使用多个 HttpSubworker 并发写入同一文件，.ghd 文件保存每个分片
+    的 start/progress/end 三元组，用于暂停后恢复。所有磁盘写入都走 pwrite，
+    避免多个分片共享文件句柄时互相移动文件偏移。
+    """
+
     def __init__(self, stage: HttpTaskStage):
         super().__init__(stage)
         self.stage = stage
@@ -132,6 +168,7 @@ class HttpWorker(Worker):
         self.requestHeaders, self.requestCookies = splitCookies(stage.headers)
 
     def reassignSubworker(self):
+        """把剩余最多的分片拆成两半以提升慢连接场景的利用率。"""
         if self.stage.fileSize <= 0:
             return
 
@@ -148,12 +185,18 @@ class HttpWorker(Worker):
         self.taskGroup.create_task(self.handleSubworker(newSubworker))
 
     def _buildRangeHeaders(self, rangeValue: str) -> dict:
+        """构造 Range 请求头，并禁用压缩以保证字节偏移可对应原文件。"""
         requestHeaders = self.requestHeaders.copy()
         requestHeaders["range"] = rangeValue
         requestHeaders["accept-encoding"] = "identity"
         return requestHeaders
 
     async def handleSubworker(self, subworker: HttpSubworker):
+        """下载单个分片，失败后按当前策略持续重试。
+
+        分三种模式处理：未知大小但支持 Range、不支持 Range、普通固定范围。
+        普通范围会截断超出分片边界的 chunk，防止服务器返回过量数据覆盖后续分片。
+        """
         if subworker.end == SpecialFileSize.UNKNOWN:  # 支持断点续传, 但文件大小未知
             while True:
                 try:
@@ -275,6 +318,11 @@ class HttpWorker(Worker):
             self.reassignSubworker()
 
     def checkIfAutoAcceleration(self):
+        """根据速度稳定性判断是否继续自动拆分分片。
+
+        先观察 5 秒稳定速度，再临时增加分片数；若速度提升低于分片增长的 80%，
+        说明服务器或链路不受益于更多连接，后续不再自动加速。
+        """
         if self.stage.accelerated or not cfg.autoSpeedUp.value:
             return
 
@@ -322,6 +370,11 @@ class HttpWorker(Worker):
                 )
 
     async def supervisor(self):
+        """周期性写入断点记录并刷新阶段进度。
+
+        .ghd 只在 supportsRange=True 时生成；不支持 Range 的下载每次重试都从头
+        开始，写断点文件没有意义也会误导恢复逻辑。
+        """
         recordFileHandle = None
         if self.stage.supportsRange:
             recordFileHandle = open(Path(self.stage.outputFile + ".ghd"), "wb")
@@ -352,6 +405,11 @@ class HttpWorker(Worker):
                 recordFileHandle.close()
 
     def restoreProgress(self) -> bool:
+        """从 .ghd 文件恢复分片进度。
+
+        记录格式是连续的小端 uint64 三元组。解析失败会清空已读分片并返回 False，
+        让调用方重新生成分片，避免使用半损坏记录覆盖输出文件。
+        """
         recordFile = Path(self.stage.outputFile + ".ghd")
         if recordFile.exists():
             try:
@@ -370,6 +428,7 @@ class HttpWorker(Worker):
         return False
 
     def generateSubworkers(self):
+        """根据服务器能力和文件大小生成初始分片。"""
         if not self.stage.supportsRange:
             self.subworkers.append(HttpSubworker(0, 0, SpecialFileSize.NOT_SUPPORTED))
             return
@@ -389,6 +448,7 @@ class HttpWorker(Worker):
         self.subworkers.append(HttpSubworker(start, start, self.stage.fileSize - 1))
 
     def _cleanupRecordFile(self):
+        """删除 Python HTTP 引擎的断点记录文件。"""
         target = Path(self.stage.outputFile + ".ghd")
         try:
             if target.is_file() or target.is_symlink():
@@ -397,6 +457,11 @@ class HttpWorker(Worker):
             logger.opt(exception=e).error("failed to cleanup temporary file {}", target)
 
     async def run(self):
+        """执行 HTTP 下载并维护阶段状态。
+
+        成功完成时删除 .ghd；取消时保留 .ghd 并把阶段置为 PAUSED，以便下次
+        restoreProgress() 续传。异常路径通过 setError() 交给任务层持久化。
+        """
         self.taskGroup = TaskGroup()
         self.subworkers: list[HttpSubworker] = []
         self.client = niquests.AsyncSession(happy_eyeballs=True, pool_maxsize=256)
