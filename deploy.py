@@ -6,8 +6,22 @@ from pathlib import Path
 
 from app.supports.config import VERSION, YEAR, AUTHOR, DESKTOP_ID
 
-# Windows PE file version requires numeric-only format (e.g. "3.9.1" not "3.9-1")
-PE_VERSION = VERSION.replace("-", ".")
+
+def format_pe_version(version: str) -> str:
+    upstreamVersion, separator, forkIteration = version.partition("-")
+    versionParts = upstreamVersion.split(".")
+
+    if separator:
+        if len(versionParts) >= 4:
+            versionParts = [*versionParts[:3], forkIteration]
+        else:
+            versionParts = [*versionParts, *("0" for _ in range(3 - len(versionParts))), forkIteration]
+
+    return ".".join(versionParts[:4])
+
+
+# Windows PE/Nuitka version fields accept at most 4 numeric segments.
+PE_VERSION = format_pe_version(VERSION)
 
 FEATURES_ROOT = Path("features")
 FILE_ICONS_DIR = Path("app/assets/file_icons")
