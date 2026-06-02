@@ -111,18 +111,6 @@ class ProxyValidator(ConfigValidator):
         return value if self.validate(value) else "Auto"
 
 
-class GeometryValidator(ConfigValidator):
-    def validate(self, value: QRect) -> bool:
-        """由于 QScreen 必须在 QApplication 初始化之后调用, 所以由 MainWindow 处理特殊情况"""
-        x, y, w, h = value.x(), value.y(), value.width(), value.height()
-        if x < 0 or y < 0 or w < 0 or h < 0:
-            return False
-        return True
-
-    def correct(self, value) -> QRect:
-        return value if self.validate(value) else QRect(0, 0, 0, 0)
-
-
 class GeometrySerializer(ConfigSerializer):
     def serialize(self, value: QRect) -> str:
         """保存为字符串 "x,y,w,h"."""
@@ -322,9 +310,8 @@ class Config(QConfig):
         "Software",
         "Geometry",
         QRect(0, 0, 0, 0),
-        GeometryValidator(),
-        GeometrySerializer(),
-    )  # 由于 QScreen 必须在 QApplication 初始化之后调用, 所以由 MainWindow 处理特殊情况
+        serializer=GeometrySerializer(),
+    )  # 配置层够不到 QScreen，位置可用性留给 MainWindow 首次 show 时判定，这里只管序列化
 
     # 设置页 UI 状态
     collapsedSettingGroups = ConfigItem(
@@ -362,8 +349,10 @@ class Config(QConfig):
 
 YEAR = 2026
 AUTHOR = "XiaoYouChR"
-VERSION = "3.10-1"
-LATEST_EXTENSION_VERSION = "1.3.0"
+VERSION = "3.10.2.1-1"
+DESKTOP_ID = "io.github.xiaoyouchr.GhostDownloader"
+DESKTOP_OBJECT_PATH = "/" + DESKTOP_ID.replace(".", "/")
+LATEST_EXTENSION_VERSION = "1.4.0"
 AUTHOR_URL = "https://space.bilibili.com/437313511"
 FEEDBACK_URL = "https://github.com/XiaoYouChR/Ghost-Downloader-3/issues"
 FIREFOX_ADDONS_URL = "https://addons.mozilla.org/zh-CN/firefox/addon/ghost-downloader/"

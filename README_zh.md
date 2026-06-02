@@ -5,9 +5,6 @@
 > [!NOTE]
 > 由于学习原因, 近期本项目的开发速度有所放缓.
 
-> [!TIP]
-> 如果您想在 Windows 7 上使用 Ghost-Downloader-3，请下载 `v3.8.0-Windows7` 版本.
-
 > [!IMPORTANT]
 > 欢迎加入 Ghost Downloader 用户交流群 [756042420](https://qm.qq.com/q/gPk6FR1Hby)
 
@@ -143,14 +140,14 @@ cd gd3-engine && maturin develop --release
           <br />
           <sub><b>XiaoYouChR</b></sub></a>
         <br />
-        <sub><b>14117 words</b></sub>
+        <sub><b>14249 words</b></sub>
       </td>
       <td align="center" valign="top">
         <a href="https://crowdin.com/profile/i0ntempest"><img alt="logo" style="width: 64px" src="https://crowdin-static.cf-downloads.crowdin.com/avatar/17636930/medium/f6bf4e67c7b87221f2e7e04345f8c6b2.jpeg" />
           <br />
           <sub><b>i0ntempest</b></sub></a>
         <br />
-        <sub><b>1402 words</b></sub>
+        <sub><b>1920 words</b></sub>
       </td>
       <td align="center" valign="top">
         <a href="https://crowdin.com/profile/ReM2812"><img alt="logo" style="width: 64px" src="https://crowdin-static.cf-downloads.crowdin.com/avatar/17626502/medium/8d12a395a224c0f9d5546a8e5621186c.jpg" />

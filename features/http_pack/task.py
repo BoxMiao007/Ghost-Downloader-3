@@ -113,6 +113,7 @@ class HttpTaskStage(TaskStage):
     accelerated: bool = False
     engine: str = "python"
     outputFileOverride: str = ""
+    subworkers: list = field(default_factory=list, repr=False)  # worker 运行时挂上引用供分段进度条读取, repr=False 不落盘
 
     @property
     def outputFile(self) -> str:
@@ -464,10 +465,17 @@ class HttpWorker(Worker):
         """
         self.taskGroup = TaskGroup()
         self.subworkers: list[HttpSubworker] = []
+        self.stage.subworkers = self.subworkers
         self.client = niquests.AsyncSession(happy_eyeballs=True, pool_maxsize=256)
         self.client.trust_env = False
         shouldCleanupRecordFile = False
         Path(self.stage.outputFile).parent.mkdir(parents=True, exist_ok=True)
+
+        # 故意提前占位——HTTP 阶段只落 .video/.audio 中间产物, .mp4 要等 merge
+        # 完才有, 这段窗口期同名任务过 deduplicateFilename 看不到就会撞名
+        finalOutput = Path(self.stage.task.outputFolder)
+        if finalOutput != Path(self.stage.outputFile):
+            finalOutput.touch(exist_ok=True)
 
         restored = False
         if self.stage.supportsRange:

@@ -80,3 +80,6 @@ Desktop.ini
 
 # 忽略 Nuitka 中间产物
 *.build/
+
+# 忽略 Playwright MCP 本地状态
+.playwright-mcp

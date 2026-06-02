@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-from app.bases.interfaces import FeaturePack
+from app.bases.interfaces import FeaturePack, FileType
 from app.bases.models import Task
 from app.supports.paths import executableDir
 
@@ -311,6 +311,15 @@ class FeatureService:
             except Exception as e:
                 logger.opt(exception=e).error("获取 FeaturePack 对话框设置项失败 {}", packName)
         return cards
+
+    def fileTypes(self) -> list[FileType]:
+        types = []
+        for packName, packInstance in self._sortedPacks():
+            try:
+                types.extend(packInstance.fileTypes())
+            except Exception as e:
+                logger.opt(exception=e).error("获取 FeaturePack 文件类型失败 {}", packName)
+        return types
 
     def load(self, mainWindow: "MainWindow"):
         """发现并加载全部 FeaturePack。

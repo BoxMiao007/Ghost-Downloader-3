@@ -194,6 +194,10 @@ class HttpPack(FeaturePack):
     def matches(self, url: str) -> bool:
         return urlparse(url).scheme.lower() in {"http", "https"}
 
+    def taskCard(self, task: Task, parent=None):
+        from .cards import HttpTaskCard
+        return HttpTaskCard(task, parent)
+
     async def parse(self, payload: dict) -> Task:
         """解析 HTTP 下载任务。
 
