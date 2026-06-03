@@ -8,6 +8,7 @@ import {
     MessageBar,
     MessageBarBody,
     Select,
+    Textarea,
 } from "@fluentui/react-components";
 import {ArrowClockwiseRegular, CheckmarkRegular, ClipboardPasteRegular, PlugConnectedRegular,} from "@fluentui/react-icons";
 import {useEffect, useState} from "react";
@@ -37,8 +38,24 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
   },
+  textareaRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "8px",
+    width: "100%",
+  },
   input: {
     flex: 1,
+  },
+  suffixTextarea: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: "100%",
+    minHeight: "88px",
+    boxSizing: "border-box",
+  },
+  suffixSaveButton: {
+    flexShrink: 0,
   },
   statusCard: {
     gap: "8px",
@@ -173,9 +190,9 @@ export function SettingsPage({
     }
   }
 
-  async function commitSuffixFilter() {
-    const nextValue = suffixDraft.trim();
-    if (savingBrowserDownloadSuffixFilter || nextValue === browserDownloadExcludedExtensions.trim()) {
+  async function commitSuffixFilter(forceSave = false) {
+    const nextValue = suffixDraft.trim() ? suffixDraft : "";
+    if (savingBrowserDownloadSuffixFilter || (!forceSave && nextValue === browserDownloadExcludedExtensions)) {
       setSuffixDirty(false);
       return;
     }
@@ -277,28 +294,25 @@ export function SettingsPage({
       <Card appearance="filled-alternative" className={styles.suffixCard}>
         <Body1Strong>下载接管</Body1Strong>
         <Field label="排除后缀">
-          <div className={styles.inputRow}>
-            <Input
-              className={styles.input}
+          <div className={styles.textareaRow}>
+            <Textarea
+              className={styles.suffixTextarea}
               disabled={savingBrowserDownloadSuffixFilter}
               placeholder=".zip, exe"
+              resize="vertical"
               value={suffixDraft}
               onBlur={() => void commitSuffixFilter()}
               onChange={(_event, data) => {
                 setSuffixDraft(data.value);
                 setSuffixDirty(true);
               }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void commitSuffixFilter();
-                }
-              }}
             />
             <Button
+              className={styles.suffixSaveButton}
               appearance="primary"
               disabled={savingBrowserDownloadSuffixFilter}
               icon={<CheckmarkRegular />}
-              onClick={() => void commitSuffixFilter()}
+              onClick={() => void commitSuffixFilter(true)}
             >
               保存
             </Button>

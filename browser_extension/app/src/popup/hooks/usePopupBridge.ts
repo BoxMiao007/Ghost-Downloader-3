@@ -11,6 +11,12 @@ import type {
     PopupView,
     TaskAction,
 } from "../../shared/types";
+import {
+  isRuntimeErrorResponse,
+  normalizeRuntimeErrorMessage,
+  requirePopupStatePayload,
+  runtimeErrorMessageOr,
+} from "../../shared/runtime-messages";
 import {sortTasks} from "../../shared/utils";
 
 const REFRESH_INTERVAL_MS = 1000;
@@ -19,12 +25,36 @@ const MEDIA_COMMAND_TIMEOUT_MS = 300;
 
 type FlashTone = "neutral" | "success" | "error";
 
+interface BrowserDownloadSuffixFilterSaveResponse {
+  ok: true;
+  message?: string;
+  browserDownloadExcludedExtensions: string;
+}
+
+function requireBrowserDownloadSuffixFilterSaveResponse(
+  value: unknown,
+  fallback: string,
+): BrowserDownloadSuffixFilterSaveResponse {
+  if (isRuntimeErrorResponse(value)) {
+    throw new Error(normalizeRuntimeErrorMessage(value.message, fallback));
+  }
+  if (
+    value
+    && typeof value === "object"
+    && (value as BrowserDownloadSuffixFilterSaveResponse).ok === true
+    && typeof (value as BrowserDownloadSuffixFilterSaveResponse).browserDownloadExcludedExtensions === "string"
+  ) {
+    return value as BrowserDownloadSuffixFilterSaveResponse;
+  }
+  throw new Error(fallback);
+}
+
 function sendRuntimeMessage<T>(message: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, (response: T) => {
       const lastError = chrome.runtime.lastError;
       if (lastError) {
-        reject(new Error(lastError.message));
+        reject(new Error(normalizeRuntimeErrorMessage(lastError.message, "扩展后台通信失败")));
         return;
       }
       resolve(response);
@@ -97,16 +127,16 @@ function updateBusyState<T>(
   });
 }
 
-function errorMessageOr(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
-}
-
 async function sendDesktopCommand(message: unknown, fallback: string) {
-  const result = await sendRuntimeMessage<DesktopRequestResult>(message);
-  if (!result.ok) {
-    throw new Error(result.message || fallback);
+  const result = await sendRuntimeMessage<unknown>(message);
+  if (!result || typeof result !== "object" || typeof (result as DesktopRequestResult).ok !== "boolean") {
+    throw new Error(fallback);
   }
-  return result;
+  const desktopResult = result as DesktopRequestResult;
+  if (!desktopResult.ok) {
+    throw new Error(normalizeRuntimeErrorMessage(desktopResult.message, fallback));
+  }
+  return desktopResult;
 }
 
 async function sendMediaMessage(tabId: number, message: Record<string, unknown>) {
@@ -209,10 +239,11 @@ export function usePopupBridge(activeView: PopupView) {
       }
 
       refreshPromiseRef.current = (async () => {
-        const next = await sendRuntimeMessage<PopupStatePayload>({
+        const response = await sendRuntimeMessage<unknown>({
           type: "popup_get_state",
           view: requestView(view),
         });
+        const next = requirePopupStatePayload(response, "刷新弹窗状态失败");
         applyPopupState(next);
       })();
 
@@ -262,11 +293,13 @@ export function usePopupBridge(activeView: PopupView) {
   }, []);
 
   const requestPopupState = useCallback(
-    (message: Record<string, unknown>) =>
-      sendRuntimeMessage<PopupStatePayload>({
+    async (message: Record<string, unknown>) => {
+      const response = await sendRuntimeMessage<unknown>({
         ...message,
         view: requestView(activeViewRef.current),
-      }),
+      });
+      return requirePopupStatePayload(response, "更新弹窗状态失败");
+    },
     [requestView],
   );
 
@@ -285,7 +318,7 @@ export function usePopupBridge(activeView: PopupView) {
         );
         return true;
       } catch (error) {
-        setFlash(errorMessageOr(error, "保存配对令牌失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "保存配对令牌失败"), "error");
         return false;
       } finally {
         if (mountedRef.current) {
@@ -311,7 +344,7 @@ export function usePopupBridge(activeView: PopupView) {
         );
         return true;
       } catch (error) {
-        setFlash(errorMessageOr(error, "保存服务地址失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "保存服务地址失败"), "error");
         return false;
       } finally {
         if (mountedRef.current) {
@@ -332,7 +365,7 @@ export function usePopupBridge(activeView: PopupView) {
       setFlash(next.connectionMessage, next.connectionState === "connected" ? "success" : "neutral");
       return true;
     } catch (error) {
-      setFlash(errorMessageOr(error, "重新连接失败"), "error");
+      setFlash(runtimeErrorMessageOr(error, "重新连接失败"), "error");
       return false;
     } finally {
       if (mountedRef.current) {
@@ -356,7 +389,7 @@ export function usePopupBridge(activeView: PopupView) {
       });
       return true;
     } catch (error) {
-      setFlash(errorMessageOr(error, "自动配对失败"), "error");
+      setFlash(runtimeErrorMessageOr(error, "自动配对失败"), "error");
       return false;
     } finally {
       if (mountedRef.current) {
@@ -375,7 +408,7 @@ export function usePopupBridge(activeView: PopupView) {
         });
         applyPopupState(next);
       } catch (error) {
-        setFlash(errorMessageOr(error, "更新拦截下载失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "更新拦截下载失败"), "error");
       } finally {
         if (mountedRef.current) {
           setIsUpdatingIntercept(false);
@@ -389,14 +422,19 @@ export function usePopupBridge(activeView: PopupView) {
     async (value: string) => {
       setIsUpdatingBrowserDownloadSuffixFilter(true);
       try {
-        const next = await requestPopupState({
+        const response = await sendRuntimeMessage<unknown>({
           type: "popup_set_browser_download_suffix_filter",
           value,
         });
-        applyPopupState(next);
+        const result = requireBrowserDownloadSuffixFilterSaveResponse(response, "更新后缀排除规则失败");
+        setPayload((current) => ({
+          ...current,
+          browserDownloadExcludedExtensions: result.browserDownloadExcludedExtensions,
+        }));
+        setFlash(result.message || "后缀排除规则已保存", "success");
         return true;
       } catch (error) {
-        setFlash(errorMessageOr(error, "更新后缀排除规则失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "更新后缀排除规则失败"), "error");
         return false;
       } finally {
         if (mountedRef.current) {
@@ -404,7 +442,7 @@ export function usePopupBridge(activeView: PopupView) {
         }
       }
     },
-    [applyPopupState, requestPopupState, setFlash],
+    [setFlash],
   );
 
   const setMediaDownloadOverlay = useCallback(
@@ -417,7 +455,7 @@ export function usePopupBridge(activeView: PopupView) {
         });
         applyPopupState(next);
       } catch (error) {
-        setFlash(errorMessageOr(error, "更新下载按钮失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "更新下载按钮失败"), "error");
       } finally {
         if (mountedRef.current) {
           setIsUpdatingMediaDownloadOverlay(false);
@@ -439,7 +477,7 @@ export function usePopupBridge(activeView: PopupView) {
         await refreshState(activeViewRef.current);
         setFlash("任务操作已发送", "success");
       } catch (error) {
-        setFlash(errorMessageOr(error, "任务操作失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "任务操作失败"), "error");
       } finally {
         updateBusyState(setBusyTaskIds, taskId, false);
       }
@@ -458,7 +496,7 @@ export function usePopupBridge(activeView: PopupView) {
         await refreshState(activeViewRef.current);
         setFlash(result.message || "资源处理成功", "success");
       } catch (error) {
-        setFlash(errorMessageOr(error, "发送资源失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "发送资源失败"), "error");
       } finally {
         updateBusyState(setBusyResourceIds, resourceId, false);
       }
@@ -479,7 +517,7 @@ export function usePopupBridge(activeView: PopupView) {
         setFlash(result.message || "资源已发送到 Ghost Downloader", "success");
         return true;
       } catch (error) {
-        setFlash(errorMessageOr(error, "在线合并失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "在线合并失败"), "error");
         return false;
       } finally {
         ids.forEach((resourceId) => updateBusyState(setBusyResourceIds, resourceId, false));
@@ -504,7 +542,7 @@ export function usePopupBridge(activeView: PopupView) {
         await refreshState(activeViewRef.current);
         setFlash(result.message || "功能状态已更新", "success");
       } catch (error) {
-        setFlash(errorMessageOr(error, "功能切换失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "功能切换失败"), "error");
       } finally {
         setBusyFeature(feature, false);
       }
@@ -519,14 +557,15 @@ export function usePopupBridge(activeView: PopupView) {
         return;
       }
       try {
-        const next = await sendRuntimeMessage<PopupStatePayload>({
+        const response = await sendRuntimeMessage<unknown>({
           type: "popup_set_media_index",
           tabId,
           index,
         });
+        const next = requirePopupStatePayload(response, "切换媒体失败");
         applyPopupState(next);
       } catch (error) {
-        setFlash(errorMessageOr(error, "切换媒体失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "切换媒体失败"), "error");
       }
     },
     [applyPopupState, payload.mediaPlaybackState.tabId, setFlash],
@@ -594,7 +633,7 @@ export function usePopupBridge(activeView: PopupView) {
         await sendMediaMessage(tabId, mediaMessage);
         await refreshState("advanced");
       } catch (error) {
-        setFlash(errorMessageOr(error, "媒体控制失败"), "error");
+        setFlash(runtimeErrorMessageOr(error, "媒体控制失败"), "error");
       } finally {
         if (mountedRef.current) {
           setIsUpdatingMedia(false);

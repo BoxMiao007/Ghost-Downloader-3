@@ -10,6 +10,7 @@ import {createFeatureBridge} from "./background/feature-bridge";
 import {createMediaBridge} from "./background/media-bridge";
 import {createResourceBridge} from "./background/resource-bridge";
 import {inferDownloadExtension, normalizeDownloadSuffixes} from "./background/download-suffix-filter";
+import {saveBrowserDownloadSuffixFilterSetting} from "./background/popup-settings";
 import {
   BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY,
   INTERCEPT_DOWNLOADS_KEY,
@@ -24,6 +25,7 @@ import {
     queryTabs,
 } from "./background/chrome-helpers";
 import {onSendHeadersExtraInfoSpec, supportsDownloadDeterminingFilename,} from "./shared/browser";
+import {createRuntimeErrorResponse} from "./shared/runtime-messages";
 
 const desktopBridge = createDesktopBridge();
 const resourceBridge = createResourceBridge({
@@ -244,7 +246,9 @@ async function interceptBrowserDownload(
 }
 
 function reply(sendResponse: (response?: unknown) => void, response: Promise<unknown>) {
-  void response.then(sendResponse);
+  void response
+    .then(sendResponse)
+    .catch((error) => sendResponse(createRuntimeErrorResponse(error, "后台操作失败")));
   return true;
 }
 
@@ -332,9 +336,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "popup_set_browser_download_suffix_filter") {
     return reply(sendResponse, (async () => {
-      browserDownloadExcludedExtensions = String(message.value ?? "");
-      await chrome.storage.local.set({ [BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY]: browserDownloadExcludedExtensions });
-      return buildPopupState({ currentView: message.view as PopupView | undefined });
+      return saveBrowserDownloadSuffixFilterSetting(String(message.value ?? ""), async (nextValue) => {
+        browserDownloadExcludedExtensions = nextValue;
+        await chrome.storage.local.set({ [BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY]: browserDownloadExcludedExtensions });
+      });
     })());
   }
 
