@@ -49,7 +49,7 @@ class FeaturePack:
     否则任务恢复后无法找到对应的卡片、编辑器和结果视图。
     """
 
-    packId: str
+    packId: str = ""
     priority: int = 0
     config: "PackConfig | None" = None
 
