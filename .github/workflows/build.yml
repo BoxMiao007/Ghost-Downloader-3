@@ -12,6 +12,7 @@ on:
           - 'windows'
           - 'macos'
           - 'linux'
+          - 'browser_extension'
           - 'all'
       package_installer:
         description: 'Package Installer'
@@ -28,6 +29,81 @@ permissions:
   contents: write
 
 jobs:
+  build-browser-extension:
+    if: ${{ github.event_name == 'release' || github.event.inputs.build_target == 'browser_extension' || github.event.inputs.build_target == 'all' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: browser_extension/app/package-lock.json
+
+      - name: Set version
+        run: |
+          version=$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          config = Path("app/supports/config.py").read_text(encoding="utf-8")
+          match = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']', config, re.MULTILINE)
+          if not match:
+              raise SystemExit("VERSION not found in app/supports/config.py")
+          print(match.group(1))
+          PY
+          )
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "VERSION=${version}"
+
+      - name: Install browser extension dependencies
+        working-directory: browser_extension/app
+        run: npm ci
+
+      - name: Test browser extension
+        working-directory: browser_extension/app
+        run: npm run test
+
+      - name: Typecheck browser extension
+        working-directory: browser_extension/app
+        run: npm run typecheck
+
+      - name: Build browser extension
+        working-directory: browser_extension/app
+        run: npm run build
+
+      - name: Package browser extension
+        run: |
+          chromium_archive="Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension-Chromium.zip"
+          firefox_archive="Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension-Firefox.zip"
+          test -d browser_extension/chromium
+          test -d browser_extension/firefox
+          (cd browser_extension/chromium && zip -r "${GITHUB_WORKSPACE}/${chromium_archive}" .)
+          (cd browser_extension/firefox && zip -r "${GITHUB_WORKSPACE}/${firefox_archive}" .)
+
+      - name: Upload artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension
+          path: |
+            Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension-Chromium.zip
+            Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension-Firefox.zip
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        if: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/') }}
+        with:
+          files: |
+            Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension-Chromium.zip
+            Ghost-Downloader-v${{ env.VERSION }}-BrowserExtension-Firefox.zip
+
   build-windows:
     if: ${{ github.event_name == 'release' || github.event.inputs.build_target == 'windows' || github.event.inputs.build_target == 'all' }}
     strategy:
