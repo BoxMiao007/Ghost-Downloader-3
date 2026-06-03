@@ -59,6 +59,7 @@ docs/superpowers/
 .eggs/
 
 # 忽略测试与代码质量缓存
+browser_extension/app/.tmp-test/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

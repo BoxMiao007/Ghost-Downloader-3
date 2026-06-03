@@ -9,6 +9,7 @@ import {createDesktopBridge} from "./background/desktop-bridge";
 import {createFeatureBridge} from "./background/feature-bridge";
 import {createMediaBridge} from "./background/media-bridge";
 import {createResourceBridge} from "./background/resource-bridge";
+import {inferDownloadExtension, normalizeDownloadSuffixes} from "./background/download-suffix-filter";
 import {
   BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY,
   INTERCEPT_DOWNLOADS_KEY,
@@ -34,42 +35,6 @@ const mediaBridge = createMediaBridge();
 let interceptDownloads = true;
 let browserDownloadExcludedExtensions = "";
 let mediaDownloadOverlayEnabled = true;
-
-function normalizeDownloadSuffixes(value: string): Set<string> {
-  return new Set(
-    value
-      .split(/[\s,;]+/)
-      .map((item) => item.trim().toLowerCase().replace(/^\.+/, ""))
-      .filter(Boolean),
-  );
-}
-
-function inferDownloadExtension(downloadItem: chrome.downloads.DownloadItem): string {
-  const candidates = [downloadItem.filename, downloadItem.finalUrl, downloadItem.url];
-
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    const source = candidate.includes("//")
-      ? (() => {
-          try {
-            return new URL(candidate).pathname;
-          } catch {
-            return candidate;
-          }
-        })()
-      : candidate;
-    const baseName = source.split(/[\\/]/).pop() ?? "";
-    const dotIndex = baseName.lastIndexOf(".");
-    if (dotIndex >= 0 && dotIndex < baseName.length - 1) {
-      return baseName.slice(dotIndex + 1).toLowerCase();
-    }
-  }
-
-  return "";
-}
 
 async function injectMediaDownloadOverlay(tabId: number) {
   if (!mediaDownloadOverlayEnabled) {
