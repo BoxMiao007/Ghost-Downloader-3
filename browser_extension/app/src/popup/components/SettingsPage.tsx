@@ -9,7 +9,7 @@ import {
     MessageBarBody,
     Select,
 } from "@fluentui/react-components";
-import {ArrowClockwiseRegular, ClipboardPasteRegular, PlugConnectedRegular,} from "@fluentui/react-icons";
+import {ArrowClockwiseRegular, CheckmarkRegular, ClipboardPasteRegular, PlugConnectedRegular,} from "@fluentui/react-icons";
 import {useEffect, useState} from "react";
 
 import {DEFAULT_SERVER_URL, EXTENSION_VERSION, HELP_CONTENT} from "../../shared/constants";
@@ -48,6 +48,10 @@ const useStyles = makeStyles({
     gap: "12px",
     padding: "16px",
   },
+  suffixCard: {
+    gap: "12px",
+    padding: "16px",
+  },
   helpSection: {
     display: "flex",
     flexDirection: "column",
@@ -71,12 +75,15 @@ export function SettingsPage({
   desktopVersion,
   token,
   serverUrl,
+  browserDownloadExcludedExtensions,
   savingToken,
   savingServerUrl,
+  savingBrowserDownloadSuffixFilter,
   refreshingConnection,
   requestingPairing,
   onSaveToken,
   onSaveServerUrl,
+  onSaveBrowserDownloadSuffixFilter,
   onRefreshConnection,
   onRequestPairing,
   themePreference,
@@ -85,12 +92,15 @@ export function SettingsPage({
   desktopVersion: string;
   token: string;
   serverUrl: string;
+  browserDownloadExcludedExtensions: string;
   savingToken?: boolean;
   savingServerUrl?: boolean;
+  savingBrowserDownloadSuffixFilter?: boolean;
   refreshingConnection?: boolean;
   requestingPairing?: boolean;
   onSaveToken: (value: string) => Promise<boolean>;
   onSaveServerUrl: (value: string) => Promise<boolean>;
+  onSaveBrowserDownloadSuffixFilter: (value: string) => Promise<boolean>;
   onRefreshConnection: () => Promise<boolean>;
   onRequestPairing: () => Promise<boolean>;
   themePreference: ThemePreference;
@@ -99,8 +109,10 @@ export function SettingsPage({
   const styles = useStyles();
   const [tokenDraft, setTokenDraft] = useState(token);
   const [serverUrlDraft, setServerUrlDraft] = useState(serverUrl || DEFAULT_SERVER_URL);
+  const [suffixDraft, setSuffixDraft] = useState(browserDownloadExcludedExtensions);
   const [tokenDirty, setTokenDirty] = useState(false);
   const [serverDirty, setServerDirty] = useState(false);
+  const [suffixDirty, setSuffixDirty] = useState(false);
 
   useEffect(() => {
     if (!tokenDirty) {
@@ -113,6 +125,12 @@ export function SettingsPage({
       setServerUrlDraft(serverUrl || DEFAULT_SERVER_URL);
     }
   }, [serverDirty, serverUrl]);
+
+  useEffect(() => {
+    if (!suffixDirty) {
+      setSuffixDraft(browserDownloadExcludedExtensions);
+    }
+  }, [browserDownloadExcludedExtensions, suffixDirty]);
 
   async function commitServerUrl() {
     const nextServerUrl = serverUrlDraft.trim() || DEFAULT_SERVER_URL;
@@ -152,6 +170,18 @@ export function SettingsPage({
       }
     } catch {
       // Ignore clipboard permission failures.
+    }
+  }
+
+  async function commitSuffixFilter() {
+    const nextValue = suffixDraft.trim();
+    if (savingBrowserDownloadSuffixFilter || nextValue === browserDownloadExcludedExtensions.trim()) {
+      setSuffixDirty(false);
+      return;
+    }
+    const ok = await onSaveBrowserDownloadSuffixFilter(nextValue);
+    if (ok) {
+      setSuffixDirty(false);
     }
   }
 
@@ -241,6 +271,38 @@ export function SettingsPage({
             <option value="light">浅色</option>
             <option value="dark">深色</option>
           </Select>
+        </Field>
+      </Card>
+
+      <Card appearance="filled-alternative" className={styles.suffixCard}>
+        <Body1Strong>下载接管</Body1Strong>
+        <Field label="排除后缀">
+          <div className={styles.inputRow}>
+            <Input
+              className={styles.input}
+              disabled={savingBrowserDownloadSuffixFilter}
+              placeholder=".zip, exe"
+              value={suffixDraft}
+              onBlur={() => void commitSuffixFilter()}
+              onChange={(_event, data) => {
+                setSuffixDraft(data.value);
+                setSuffixDirty(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void commitSuffixFilter();
+                }
+              }}
+            />
+            <Button
+              appearance="primary"
+              disabled={savingBrowserDownloadSuffixFilter}
+              icon={<CheckmarkRegular />}
+              onClick={() => void commitSuffixFilter()}
+            >
+              保存
+            </Button>
+          </div>
         </Field>
       </Card>
 

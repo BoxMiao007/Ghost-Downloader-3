@@ -65,6 +65,7 @@ function createEmptyPayload(): PopupStatePayload {
     token: "",
     serverUrl: "",
     interceptDownloads: true,
+    browserDownloadExcludedExtensions: "",
     mediaDownloadOverlayEnabled: true,
     tasks: [],
     taskCounters: { total: 0, active: 0, completed: 0 },
@@ -162,6 +163,7 @@ export function usePopupBridge(activeView: PopupView) {
   const [isRefreshingConnection, setIsRefreshingConnection] = useState(false);
   const [isRequestingPairing, setIsRequestingPairing] = useState(false);
   const [isUpdatingIntercept, setIsUpdatingIntercept] = useState(false);
+  const [isUpdatingBrowserDownloadSuffixFilter, setIsUpdatingBrowserDownloadSuffixFilter] = useState(false);
   const [isUpdatingMediaDownloadOverlay, setIsUpdatingMediaDownloadOverlay] = useState(false);
   const [isUpdatingMedia, setIsUpdatingMedia] = useState(false);
 
@@ -377,6 +379,28 @@ export function usePopupBridge(activeView: PopupView) {
       } finally {
         if (mountedRef.current) {
           setIsUpdatingIntercept(false);
+        }
+      }
+    },
+    [applyPopupState, requestPopupState, setFlash],
+  );
+
+  const setBrowserDownloadSuffixFilter = useCallback(
+    async (value: string) => {
+      setIsUpdatingBrowserDownloadSuffixFilter(true);
+      try {
+        const next = await requestPopupState({
+          type: "popup_set_browser_download_suffix_filter",
+          value,
+        });
+        applyPopupState(next);
+        return true;
+      } catch (error) {
+        setFlash(errorMessageOr(error, "更新后缀排除规则失败"), "error");
+        return false;
+      } finally {
+        if (mountedRef.current) {
+          setIsUpdatingBrowserDownloadSuffixFilter(false);
         }
       }
     },
@@ -599,6 +623,7 @@ export function usePopupBridge(activeView: PopupView) {
     isRefreshingConnection,
     isRequestingPairing,
     isUpdatingIntercept,
+    isUpdatingBrowserDownloadSuffixFilter,
     isUpdatingMediaDownloadOverlay,
     isUpdatingMedia,
     saveToken,
@@ -606,6 +631,7 @@ export function usePopupBridge(activeView: PopupView) {
     refreshConnection,
     requestPairing,
     setInterceptDownloads,
+    setBrowserDownloadSuffixFilter,
     setMediaDownloadOverlay,
     performTaskAction,
     sendResource,

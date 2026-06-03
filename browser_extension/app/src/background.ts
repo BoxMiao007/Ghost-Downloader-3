@@ -9,7 +9,11 @@ import {createDesktopBridge} from "./background/desktop-bridge";
 import {createFeatureBridge} from "./background/feature-bridge";
 import {createMediaBridge} from "./background/media-bridge";
 import {createResourceBridge} from "./background/resource-bridge";
-import {INTERCEPT_DOWNLOADS_KEY, MEDIA_DOWNLOAD_OVERLAY_KEY,} from "./background/constants";
+import {
+  BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY,
+  INTERCEPT_DOWNLOADS_KEY,
+  MEDIA_DOWNLOAD_OVERLAY_KEY,
+} from "./background/constants";
 import {
     cancelDownload,
     eraseDownloadFromHistory,
@@ -28,7 +32,44 @@ const featureBridge = createFeatureBridge();
 const mediaBridge = createMediaBridge();
 
 let interceptDownloads = true;
+let browserDownloadExcludedExtensions = "";
 let mediaDownloadOverlayEnabled = true;
+
+function normalizeDownloadSuffixes(value: string): Set<string> {
+  return new Set(
+    value
+      .split(/[\s,;]+/)
+      .map((item) => item.trim().toLowerCase().replace(/^\.+/, ""))
+      .filter(Boolean),
+  );
+}
+
+function inferDownloadExtension(downloadItem: chrome.downloads.DownloadItem): string {
+  const candidates = [downloadItem.filename, downloadItem.finalUrl, downloadItem.url];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const source = candidate.includes("//")
+      ? (() => {
+          try {
+            return new URL(candidate).pathname;
+          } catch {
+            return candidate;
+          }
+        })()
+      : candidate;
+    const baseName = source.split(/[\\/]/).pop() ?? "";
+    const dotIndex = baseName.lastIndexOf(".");
+    if (dotIndex >= 0 && dotIndex < baseName.length - 1) {
+      return baseName.slice(dotIndex + 1).toLowerCase();
+    }
+  }
+
+  return "";
+}
 
 async function injectMediaDownloadOverlay(tabId: number) {
   if (!mediaDownloadOverlayEnabled) {
@@ -99,6 +140,7 @@ async function buildPopupState(options: {
     token: desktopState.token,
     serverUrl: desktopState.serverUrl,
     interceptDownloads,
+    browserDownloadExcludedExtensions,
     mediaDownloadOverlayEnabled,
     tasks: desktopState.tasks,
     taskCounters: taskCounters(desktopState.tasks),
@@ -113,13 +155,16 @@ async function buildPopupState(options: {
 async function initialize() {
   const localState = await loadFromLocalStorage<{
     [INTERCEPT_DOWNLOADS_KEY]: boolean;
+    [BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY]: string;
     [MEDIA_DOWNLOAD_OVERLAY_KEY]: boolean;
   }>({
     [INTERCEPT_DOWNLOADS_KEY]: true,
+    [BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY]: "",
     [MEDIA_DOWNLOAD_OVERLAY_KEY]: true,
   });
 
   interceptDownloads = Boolean(localState[INTERCEPT_DOWNLOADS_KEY] ?? true);
+  browserDownloadExcludedExtensions = String(localState[BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY] ?? "");
   mediaDownloadOverlayEnabled = Boolean(localState[MEDIA_DOWNLOAD_OVERLAY_KEY] ?? true);
 
   await desktopBridge.loadPersistentState();
@@ -154,6 +199,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   desktopBridge.onLocalStorageChanged(changes);
   if (changes[INTERCEPT_DOWNLOADS_KEY]) {
     interceptDownloads = Boolean(changes[INTERCEPT_DOWNLOADS_KEY].newValue ?? true);
+  }
+  if (changes[BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY]) {
+    browserDownloadExcludedExtensions = String(changes[BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY].newValue ?? "");
   }
   if (changes[MEDIA_DOWNLOAD_OVERLAY_KEY]) {
     mediaDownloadOverlayEnabled = Boolean(changes[MEDIA_DOWNLOAD_OVERLAY_KEY].newValue ?? true);
@@ -210,6 +258,11 @@ async function interceptBrowserDownload(
 ) {
   const finalUrl = downloadItem.finalUrl || downloadItem.url;
   if (!interceptDownloads || !desktopBridge.isReady() || !/^https?:/i.test(finalUrl)) {
+    return;
+  }
+
+  const extension = inferDownloadExtension(downloadItem);
+  if (extension && normalizeDownloadSuffixes(browserDownloadExcludedExtensions).has(extension)) {
     return;
   }
 
@@ -308,6 +361,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return reply(sendResponse, (async () => {
       interceptDownloads = Boolean(message.enabled);
       await chrome.storage.local.set({ [INTERCEPT_DOWNLOADS_KEY]: interceptDownloads });
+      return buildPopupState({ currentView: message.view as PopupView | undefined });
+    })());
+  }
+
+  if (message.type === "popup_set_browser_download_suffix_filter") {
+    return reply(sendResponse, (async () => {
+      browserDownloadExcludedExtensions = String(message.value ?? "");
+      await chrome.storage.local.set({ [BROWSER_DOWNLOAD_SUFFIX_FILTER_KEY]: browserDownloadExcludedExtensions });
       return buildPopupState({ currentView: message.view as PopupView | undefined });
     })());
   }

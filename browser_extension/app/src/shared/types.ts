@@ -96,6 +96,7 @@ export interface PopupStatePayload {
   token: string;
   serverUrl: string;
   interceptDownloads: boolean;
+  browserDownloadExcludedExtensions: string;
   mediaDownloadOverlayEnabled: boolean;
   tasks: GenericTaskSummary[];
   taskCounters: TaskCounters;

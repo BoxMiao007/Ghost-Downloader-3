@@ -47,6 +47,8 @@
 
 The Rust engine is an **optional drop-in replacement** — select "Rust" in Settings for global default, or choose per-task in the add-task dialog. Falls back to the Python engine gracefully if unavailable.
 
+Browser download interception in the extension popup now supports excluding selected file suffixes, so common archive or installer downloads can stay in the browser while the rest still hand off to Ghost Downloader 3.
+
 ### Rust Engine Availability
 
 | Platform | Architecture | Rust Engine | Note |

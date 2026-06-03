@@ -96,10 +96,13 @@ export function App({
             savingServerUrl={bridge.isSavingServerUrl}
             refreshingConnection={bridge.isRefreshingConnection}
             requestingPairing={bridge.isRequestingPairing}
+            browserDownloadExcludedExtensions={bridge.browserDownloadExcludedExtensions}
+            savingBrowserDownloadSuffixFilter={bridge.isUpdatingBrowserDownloadSuffixFilter}
             onSaveToken={bridge.saveToken}
             onSaveServerUrl={bridge.saveServerUrl}
             onRefreshConnection={bridge.refreshConnection}
             onRequestPairing={bridge.requestPairing}
+            onSaveBrowserDownloadSuffixFilter={bridge.setBrowserDownloadSuffixFilter}
             themePreference={themePreference}
             onThemePreferenceChange={onThemePreferenceChange}
           />
