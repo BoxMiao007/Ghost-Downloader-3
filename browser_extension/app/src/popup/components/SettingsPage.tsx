@@ -293,12 +293,15 @@ export function SettingsPage({
 
       <Card appearance="filled-alternative" className={styles.suffixCard}>
         <Body1Strong>下载接管</Body1Strong>
-        <Field label="排除后缀">
+        <Field
+          label="排除后缀"
+          hint="浏览器原生下载这些后缀的文件时，不会接管到 Ghost Downloader。支持空格、逗号或分号分隔，大小写不敏感，可带或不带点前缀。例如：.zip, exe, pdf"
+        >
           <div className={styles.textareaRow}>
             <Textarea
               className={styles.suffixTextarea}
               disabled={savingBrowserDownloadSuffixFilter}
-              placeholder=".zip, exe"
+              placeholder=".zip, exe, pdf"
               resize="vertical"
               value={suffixDraft}
               onBlur={() => void commitSuffixFilter()}
